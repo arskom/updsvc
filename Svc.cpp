@@ -8,7 +8,7 @@
 
 #pragma comment(lib, "advapi32.lib")
 
-#define SVCNAME TEXT("SvcName")
+#define SVCNAME TEXT("UpdSvc")
 
 static SERVICE_STATUS gSvcStatus;
 static SERVICE_STATUS_HANDLE gSvcStatusHandle;
@@ -217,6 +217,8 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
         WaitForSingleObject(ghSvcStopEvent, INFINITE);
 
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
+
+        SvcReportEvent("Merhaba dunya!");
         return;
     }
 }
