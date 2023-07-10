@@ -33,7 +33,7 @@ int __cdecl _tmain(int argc, TCHAR *argv[])
     {
         printf("ERROR:\tIncorrect number of arguments\n\n");
         DisplayUsage();
-        return;
+        return 1;
     }
 
     StringCchCopy(szCommand, 10, argv[1]);

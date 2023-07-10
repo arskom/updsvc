@@ -1,38 +1,37 @@
+
 #include <windows.h>
-#include <tchar.h>
+
 #include <strsafe.h>
-#include "sample.h"
+#include <tchar.h>
+
+#include "UpdSvc.h"
 
 #pragma comment(lib, "advapi32.lib")
 
 #define SVCNAME TEXT("SvcName")
 
-SERVICE_STATUS          gSvcStatus; 
-SERVICE_STATUS_HANDLE   gSvcStatusHandle; 
-HANDLE                  ghSvcStopEvent = NULL;
+static SERVICE_STATUS gSvcStatus;
+static SERVICE_STATUS_HANDLE gSvcStatusHandle;
+static HANDLE ghSvcStopEvent = NULL;
 
 VOID SvcInstall(void);
 VOID WINAPI SvcCtrlHandler( DWORD ); 
 VOID WINAPI SvcMain( DWORD, LPTSTR * ); 
 
 VOID ReportSvcStatus( DWORD, DWORD, DWORD );
-VOID SvcInit( DWORD, LPTSTR * ); 
-VOID SvcReportEvent( LPTSTR );
+VOID SvcInit(DWORD, LPTSTR *);
+VOID SvcReportEvent(LPTSTR);
 
+/**
+ * @brief Entry point for the process
+ * @param argc Number of arguments
+ * @param argv Argument contents
+ * @return None, defaults to 0
+ */
 
-//
-// Purpose: 
-//   Entry point for the process
-//
-// Parameters:
-//   None
-// 
-// Return value:
-//   None, defaults to 0 (zero)
-//
-int __cdecl _tmain(int argc, TCHAR *argv[]) 
-{ 
-    // If command-line parameter is "install", install the service. 
+int __cdecl _tmain(int argc, TCHAR *argv[])
+{
+    // If command-line parameter is "install", install the service.
     // Otherwise, the service is probably being started by the SCM.
 
     if( lstrcmpi( argv[1], TEXT("install")) == 0 )
@@ -51,19 +50,20 @@ int __cdecl _tmain(int argc, TCHAR *argv[])
     // This call returns when the service has stopped. 
     // The process should simply terminate when the call returns.
 
-    if (!StartServiceCtrlDispatcher( DispatchTable )) 
-    { 
-        SvcReportEvent(TEXT("StartServiceCtrlDispatcher")); 
-    } 
-} 
+    if (!StartServiceCtrlDispatcher(DispatchTable)) {
+        SvcReportEvent(TEXT("StartServiceCtrlDispatcher"));
+    }
+
+    return 0;
+}
 
 //
-// Purpose: 
+// Purpose:
 //   Installs a service in the SCM database
 //
 // Parameters:
 //   None
-// 
+//
 // Return value:
 //   None
 //
