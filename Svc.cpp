@@ -4,11 +4,12 @@
 #include <strsafe.h>
 #include <tchar.h>
 
-#include "UpdSvc.h"
-
 #include <winhttp.h>
 
+#include "UpdSvc.h"
 #include "Svc.h"
+#include "json.hpp"
+
 #pragma comment(lib, "advapi32.lib")
 
 #define SVCNAME TEXT("UpdSvc")
@@ -346,8 +347,12 @@ VOID SvcReportEvent(LPTSTR szFunction)
     }
 }
 
-void CreateRequest()
+Buffer CreateRequest()
 {
+    DWORD dwSize=0;
+    DWORD dwDownloaded=0;
+    LPSTR pszOutBuffer;
+
     BOOL  bResults = FALSE;
     HINTERNET hSession = NULL,
         hConnect = NULL,
@@ -380,23 +385,71 @@ void CreateRequest()
                                       0, 0);
         SvcReportEvent("request sent");
     }
-    if (!bResults) {
-        // Report the error.
-        SvcReportEvent("Error sending request");
-    }
 
-    while (WinHttpReceiveResponse(hRequest, 0) == TRUE) {
-        // Print the response data
-        SvcReportEvent("received response");
-    }
+    // End the request.
+    if (bResults)
+        bResults = WinHttpReceiveResponse( hRequest, NULL);
 
-    // Report any errors.
-    if (!bResults)
-        printf( "Error %d has occurred.\n", GetLastError());
+    // Keep checking for data until there is nothing left.
+    if (bResults)
+    {
+        do
+        {
+            // Check for available data.
+            dwSize = 0;
+            if (!WinHttpQueryDataAvailable( hRequest, &dwSize))
+            {
+                printf( "Error %u in WinHttpQueryDataAvailable.\n",
+                       GetLastError());
+                break;
+            }
+
+            // No more available data.
+            if (!dwSize)
+                break;
+
+            // Allocate space for the buffer.
+            pszOutBuffer = new char[dwSize+1];
+            if (!pszOutBuffer)
+            {
+                printf("Out of memory\n");
+                break;
+            }
+
+            // Read the Data.
+            ZeroMemory(pszOutBuffer, dwSize+1);
+
+            if (!WinHttpReadData( hRequest, (LPVOID)pszOutBuffer,
+                                 dwSize, &dwDownloaded))
+            {
+                printf( "Error %u in WinHttpReadData.\n", GetLastError());
+                SvcReportEvent("failed to read");
+            }
+            else
+            {
+                   printf("%s", pszOutBuffer);
+                SvcReportEvent("data read");
+            }
+
+
+
+            // This condition should never be reached since WinHttpQueryDataAvailable
+            // reported that there are bits to read.
+            if (!dwDownloaded)
+                break;
+
+        } while (dwSize > 0);
+    }
+    else
+    {
+        // Report any errors.
+        printf( "Error %d has occurred.\n", GetLastError() );
+    }
 
     // Close any open handles.
     if (hRequest) WinHttpCloseHandle(hRequest);
     if (hConnect) WinHttpCloseHandle(hConnect);
     if (hSession) WinHttpCloseHandle(hSession);
+    return Buffer(pszOutBuffer,dwSize+1);
 }
 
