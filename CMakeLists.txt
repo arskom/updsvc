@@ -15,6 +15,15 @@ add_custom_command(
 )
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+# updsvc
 add_executable(updsvc     UpdSvc.res Svc.cpp)
+target_link_libraries(updsvc PRIVATE Winhttp)
+
+# updsvc_test
+add_executable(updsvc_test     updsvc.res Svc.cpp Svc.h SvcTest.cpp)
+target_link_libraries(updsvc_test PRIVATE Winhttp)
+target_compile_definitions(updsvc_test PRIVATE SVC_TEST)
+
 add_executable(updsvc-ctl UpdSvc.res SvcControl.cpp)
 add_executable(updsvc-cfg UpdSvc.res SvcConfig.cpp)

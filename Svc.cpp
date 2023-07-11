@@ -6,10 +6,12 @@
 
 #include "UpdSvc.h"
 
+#include <winhttp.h>
+
+#include "Svc.h"
 #pragma comment(lib, "advapi32.lib")
 
 #define SVCNAME TEXT("UpdSvc")
-
 static SERVICE_STATUS gSvcStatus;
 static SERVICE_STATUS_HANDLE gSvcStatusHandle;
 static HANDLE ghSvcStopEvent = NULL;
@@ -28,6 +30,8 @@ VOID SvcReportEvent(LPTSTR);
  * @param argv Argument contents
  * @return None, defaults to 0
  */
+
+#ifndef SVC_TEST
 
 int __cdecl _tmain(int argc, TCHAR *argv[])
 {
@@ -56,6 +60,8 @@ int __cdecl _tmain(int argc, TCHAR *argv[])
 
     return 0;
 }
+
+#endif
 
 //
 // Purpose:
@@ -218,7 +224,8 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
 
-        SvcReportEvent("Merhaba dunya!");
+        CreateRequest();
+
         return;
     }
 }
@@ -338,3 +345,58 @@ VOID SvcReportEvent(LPTSTR szFunction)
         DeregisterEventSource(hEventSource);
     }
 }
+
+void CreateRequest()
+{
+    BOOL  bResults = FALSE;
+    HINTERNET hSession = NULL,
+        hConnect = NULL,
+        hRequest = NULL;
+
+    // Use WinHttpOpen to obtain a session handle.
+    hSession = WinHttpOpen(  L"Http Request Attempt",
+                           WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                           WINHTTP_NO_PROXY_NAME,
+                           WINHTTP_NO_PROXY_BYPASS, 0);
+
+    // Specify an HTTP server.
+    if (hSession)
+        hConnect = WinHttpConnect( hSession, L"ampmail.net",
+                                  INTERNET_DEFAULT_HTTPS_PORT, 0);
+
+    // Create an HTTP Request handle.
+    if (hConnect)
+        hRequest = WinHttpOpenRequest( hConnect, L"GET",
+                                      L"release/files.json",
+                                      NULL, WINHTTP_NO_REFERER,
+                                      WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                      0);
+
+    // Send a Request.
+    if (hRequest){
+        bResults = WinHttpSendRequest( hRequest,
+                                      WINHTTP_NO_ADDITIONAL_HEADERS,
+                                      0, WINHTTP_NO_REQUEST_DATA, 0,
+                                      0, 0);
+        SvcReportEvent("request sent");
+    }
+    if (!bResults) {
+        // Report the error.
+        SvcReportEvent("Error sending request");
+    }
+
+    while (WinHttpReceiveResponse(hRequest, 0) == TRUE) {
+        // Print the response data
+        SvcReportEvent("received response");
+    }
+
+    // Report any errors.
+    if (!bResults)
+        printf( "Error %d has occurred.\n", GetLastError());
+
+    // Close any open handles.
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+}
+
