@@ -1,6 +1,8 @@
 #ifndef SVC_H
 #define SVC_H
 
+#include <sstream>
+
 struct Buffer{
     char* data;
     unsigned long size;
@@ -17,6 +19,6 @@ struct Buffer{
 
 };
 
-Buffer CreateRequest();
+std::string CreateRequest();
 
 #endif // SVC_H

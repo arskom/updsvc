@@ -10,6 +10,10 @@
 #include "Svc.h"
 #include "json.hpp"
 
+#include <sstream>
+
+
+
 #pragma comment(lib, "advapi32.lib")
 
 #define SVCNAME TEXT("UpdSvc")
@@ -347,11 +351,13 @@ VOID SvcReportEvent(LPTSTR szFunction)
     }
 }
 
-Buffer CreateRequest()
+std::string CreateRequest()
 {
     DWORD dwSize=0;
     DWORD dwDownloaded=0;
     LPSTR pszOutBuffer;
+
+    std::stringstream sstr;
 
     BOOL  bResults = FALSE;
     HINTERNET hSession = NULL,
@@ -424,18 +430,17 @@ Buffer CreateRequest()
             {
                 printf( "Error %u in WinHttpReadData.\n", GetLastError());
                 SvcReportEvent("failed to read");
-            }
-            else
-            {
-                   printf("%s", pszOutBuffer);
-                SvcReportEvent("data read");
+                break;
             }
 
-
+            assert(dwSize == dwDownloaded);
+            sstr << std::string_view(pszOutBuffer,dwSize);
+            delete[] pszOutBuffer;
+            SvcReportEvent("data read");
 
             // This condition should never be reached since WinHttpQueryDataAvailable
             // reported that there are bits to read.
-            if (!dwDownloaded)
+            if (dwDownloaded == 0)
                 break;
 
         } while (dwSize > 0);
@@ -450,6 +455,12 @@ Buffer CreateRequest()
     if (hRequest) WinHttpCloseHandle(hRequest);
     if (hConnect) WinHttpCloseHandle(hConnect);
     if (hSession) WinHttpCloseHandle(hSession);
-    return Buffer(pszOutBuffer,dwSize+1);
+    return sstr.str();
 }
 
+void Parse(std::string sstr){
+    using json = nlohmann::json;
+    json j_complete = json::parse(sstr);
+//TODO
+
+}
