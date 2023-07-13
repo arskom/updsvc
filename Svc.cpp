@@ -11,10 +11,11 @@
 #include "json.hpp"
 
 #include <sstream>
+#include <iostream>
 
+#include <Msi.h>
 
-
-#pragma comment(lib, "advapi32.lib")
+#define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
 
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
@@ -371,18 +372,19 @@ std::string CreateRequest()
                            WINHTTP_NO_PROXY_BYPASS, 0);
 
     // Specify an HTTP server.
-    if (hSession)
+    if (hSession){
         hConnect = WinHttpConnect( hSession, L"ampmail.net",
-                                  INTERNET_DEFAULT_HTTPS_PORT, 0);
+                                  INTERNET_DEFAULT_PORT, 0);
 
+    }
     // Create an HTTP Request handle.
-    if (hConnect)
+    if (hConnect){
         hRequest = WinHttpOpenRequest( hConnect, L"GET",
-                                      L"release/files.json",
+                                      L"/release/files.json",
                                       NULL, WINHTTP_NO_REFERER,
                                       WINHTTP_DEFAULT_ACCEPT_TYPES,
                                       0);
-
+    }
     // Send a Request.
     if (hRequest){
         bResults = WinHttpSendRequest( hRequest,
@@ -460,7 +462,50 @@ std::string CreateRequest()
 
 void Parse(std::string sstr){
     using json = nlohmann::json;
-    json j_complete = json::parse(sstr);
-//TODO
+    json j_complete;
+    try
+    {
+        // parsing input with a syntax error
+        j_complete = json::parse(sstr);
 
+    }
+    catch (json::parse_error& e)
+    {
+        // output exception information
+        std::cout << "message: " << e.what() << '\n'
+                  << "exception id: " << e.id << '\n'
+                  << "byte position of error: " << e.byte << std::endl;
+        return;
+    }
+
+    /*std::string s = j_complete["mgui-wgt"]["exe"]["4.1.92"]["url"];
+    std::cout << "exe: " << s << std::endl;*/
 }
+
+//Function to retrieve the version of a program
+std::string GetProgramVersion()
+{
+    char versionBuffer[256];
+    DWORD bufferSize = sizeof(versionBuffer);
+
+    //Use MsiGetProductInfo for get the version
+    UINT result = MsiGetProductInfo(uid, INSTALLPROPERTY_VERSIONSTRING, versionBuffer, &bufferSize);
+    if (result == ERROR_SUCCESS)
+    {
+        return std::string(versionBuffer);
+    }
+
+    return "";
+}
+
+// Function to initiate an update for a program using the unique identifier (GUID)
+/*bool InitiateProgramUpdat(const std::string& updatePackage)
+{
+    UINT result = MsiConfigureProduct(uid, INSTALLLEVEL_DEFAULT, INSTALLSTATE_DEFAULT);
+    return (result == ERROR_SUCCESS);
+}*/
+
+/*bool Update(const std::string& updatePackage)
+{
+
+}*/
