@@ -20,5 +20,7 @@ struct Buffer{
 };
 
 std::string CreateRequest();
+std::string GetProgramVersion();
+void Parse(std::string sstr);
 
 #endif // SVC_H
