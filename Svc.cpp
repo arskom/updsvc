@@ -17,6 +17,8 @@
 
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
 
+#define path TEXT("j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]]")
+
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
 static SERVICE_STATUS_HANDLE gSvcStatusHandle;
@@ -30,6 +32,8 @@ VOID ReportSvcStatus( DWORD, DWORD, DWORD );
 VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
 
+nlohmann::json VersionLister(const nlohmann::json& jsonData, nlohmann::json& arrayData);
+std::string GetProgramVersion();
 /**
  * @brief Entry point for the process
  * @param argc Number of arguments
@@ -460,14 +464,15 @@ std::string CreateRequest()
     return sstr.str();
 }
 
-void Parse(std::string sstr){
+std::string UpdateDetector(std::string sstr)
+{
     using json = nlohmann::json;
     json j_complete;
+
     try
     {
         // parsing input with a syntax error
         j_complete = json::parse(sstr);
-
     }
     catch (json::parse_error& e)
     {
@@ -475,12 +480,83 @@ void Parse(std::string sstr){
         std::cout << "message: " << e.what() << '\n'
                   << "exception id: " << e.id << '\n'
                   << "byte position of error: " << e.byte << std::endl;
-        return;
+        return "";
+    }
+    for (auto it = j_complete["mgui-wgt"]["exe"].rbegin(); it != j_complete["mgui-wgt"]["exe"].rend(); ++it)
+    {
+        std::cout << it.key() << std::endl;
+        for(auto jt=it.value().begin() ; jt != it.value().end() ; ++jt){
+            std::cout << jt.key() << std::endl;
+        }
+    }
+    //json::reverse_iterator it = .rbegin();
+
+
+    //std::string version = GetProgramVersion();
+    /*std::string version = "4.1.93";
+    json versionArray = json::array();
+    VersionLister(j_complete["mgui-wgt"]["exe"], versionArray);
+    bool containsElement = std::find(versionArray.begin(), versionArray.end(), version) != versionArray.end();
+
+
+    //Checking if version is correct
+    if(!containsElement)
+        std::cout << "Invalid version" << std::endl;
+
+    else
+    {
+        std::size_t versionArraySize = versionArray.size();
+
+        //test whether an update is needed
+
+        if(!(version<versionArray[versionArraySize-1])){
+            std::cout << "Update not required" << std::endl;
+        }
+        else
+        {
+            json subversionArray = json::array();
+            int len=versionArraySize;
+            for(int i = 1 ; i==len ; i++){
+
+                //test whether can we find our version
+
+                VersionLister(j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]], subversionArray);
+                bool contains = std::find(subversionArray.begin(), subversionArray.end(), version) != subversionArray.end();
+                std::cout << contains << std::endl;
+                if(contains){
+
+                    //test if update's channel is stable
+
+                    if(j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]][version]["channel"]=="Stable"){
+                        std::cout << j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]][version]["url"] << std::endl;
+                        return j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]][version]["url"];
+                    }
+                }
+                else{
+                    if(j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]]["null"]["channel"]=="Stable"){
+                        std::cout << j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]]["null"]["url"] << std::endl;
+                        return j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]]["null"]["url"];
+                    }
+                }
+            }
+        }
+    }*/
+}
+
+nlohmann::json VersionLister(const nlohmann::json& jsonData, nlohmann::json& arrayData)
+{
+    for (const auto& item : jsonData.items()) {
+        arrayData.push_back(item.key());
     }
 
-    /*std::string s = j_complete["mgui-wgt"]["exe"]["4.1.92"]["url"];
-    std::cout << "exe: " << s << std::endl;*/
+    // Print the version array
+    std::cout << "Version array elements:" << std::endl;
+    for (const auto& version : arrayData) {
+        std::cout << version << std::endl;
+    }
+    return arrayData;
 }
+
 
 //Function to retrieve the version of a program
 std::string GetProgramVersion()
