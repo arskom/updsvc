@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
     {
         std::cout << "Program Version: " << version << std::endl;
     }
-    Parse(CreateRequest());
+    UpdateDetector(CreateRequest());
     return 0;
 }
 
