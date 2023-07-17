@@ -2,7 +2,6 @@
 #define SVC_H
 
 #include <sstream>
-#include "json.hpp"
 
 struct Buffer{
     char* data;
@@ -22,7 +21,6 @@ struct Buffer{
 
 std::string CreateRequest();
 std::string GetProgramVersion();
-std::string UpdateDetector(std::string sstr);
-int compareVersions(const std::string& version1, const std::string& version2);
+void Parse(std::string sstr);
 
 #endif // SVC_H

@@ -17,8 +17,6 @@
 
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
 
-#define path TEXT("j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]]")
-
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
 static SERVICE_STATUS_HANDLE gSvcStatusHandle;
@@ -31,9 +29,6 @@ VOID WINAPI SvcMain( DWORD, LPTSTR * );
 VOID ReportSvcStatus( DWORD, DWORD, DWORD );
 VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
-
-std::vector<int> splitString(const std::string& str, char delimiter);
-std::string GetProgramVersion();
 
 /**
  * @brief Entry point for the process
@@ -465,18 +460,14 @@ std::string CreateRequest()
     return sstr.str();
 }
 
-std::string UpdateDetector(std::string sstr)
-{
+void Parse(std::string sstr){
     using json = nlohmann::json;
     json j_complete;
-    int upd=2;
-    bool exist;
-    std::string version = GetProgramVersion();
-
     try
     {
         // parsing input with a syntax error
         j_complete = json::parse(sstr);
+
     }
     catch (json::parse_error& e)
     {
@@ -484,99 +475,12 @@ std::string UpdateDetector(std::string sstr)
         std::cout << "message: " << e.what() << '\n'
                   << "exception id: " << e.id << '\n'
                   << "byte position of error: " << e.byte << std::endl;
-        return "";
+        return;
     }
 
-    for (auto it = j_complete["mgui-wgt"]["exe"].rbegin(); it != j_complete["mgui-wgt"]["exe"].rend(); ++it)
-    {
-        if(upd == 2)
-        {
-            upd = compareVersions(it.key(), version);
-            if(upd == -1 || upd == 0){
-            std::cout << "Update not required" << std::endl;
-                return "";
-            }
-        }
-
-        for(auto jt = it.value().begin() ; jt != it.value().end() ; ++jt){
-            if(jt.key() == version){
-                exist = true;
-                break;
-            }
-            else
-                exist = false;
-        }
-        if(exist){
-            if(j_complete["mgui-wgt"]["exe"][it.key()][version]["channel"] == "Stable"){
-                std::cout << j_complete["mgui-wgt"]["exe"][it.key()][version]["url"] << std::endl;
-                return j_complete["mgui-wgt"]["exe"][it.key()][version]["url"];
-            }
-        }
-        else
-        {
-            if(j_complete["mgui-wgt"]["exe"][it.key()]["null"]["channel"] == "Stable"){
-            std::cout << j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"] << std::endl;
-            return j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"];
-        }
-     }
-    }
+    /*std::string s = j_complete["mgui-wgt"]["exe"]["4.1.92"]["url"];
+    std::cout << "exe: " << s << std::endl;*/
 }
-
-std::vector<int> splitString(const std::string& str, char delimiter)
-{
-    std::vector<int> nums;
-    std::stringstream ss(str);
-    std::string num;
-
-    while (getline(ss, num, delimiter)) {
-        nums.push_back(std::stoi(num));
-    }
-    return nums;
-}
-
-int compareVersions(const std::string& version1, const std::string& version2) {
-    std::vector<int> v1 = splitString(version1, '.');
-    std::vector<int> v2 = splitString(version2, '.');
-
-    // Compare major version
-    if (v1[0] < v2[0]) {
-        return -1;
-    } else if (v1[0] > v2[0]) {
-        return 1;
-    }
-
-    // Compare minor version
-    if (v1[1] < v2[1]) {
-        return -1;
-    } else if (v1[1] > v2[1]) {
-        return 1;
-    }
-
-    // Compare patch version
-    if (v1[2] < v2[2]) {
-        return -1;
-    } else if (v1[2] > v2[2]) {
-        return 1;
-    }
-
-    // Versions are equal
-    return 0;
-}
-
-/*nlohmann::json VersionLister(const nlohmann::json& jsonData, nlohmann::json& arrayData)
-{
-    for (const auto& item : jsonData.items()) {
-        arrayData.push_back(item.key());
-    }
-
-    // Print the version array
-    std::cout << "Version array elements:" << std::endl;
-    for (const auto& version : arrayData) {
-        std::cout << version << std::endl;
-    }
-    return arrayData;
-}*/
-
 
 //Function to retrieve the version of a program
 std::string GetProgramVersion()
@@ -594,4 +498,14 @@ std::string GetProgramVersion()
     return "";
 }
 
+// Function to initiate an update for a program using the unique identifier (GUID)
+/*bool InitiateProgramUpdat(const std::string& updatePackage)
+{
+    UINT result = MsiConfigureProduct(uid, INSTALLLEVEL_DEFAULT, INSTALLSTATE_DEFAULT);
+    return (result == ERROR_SUCCESS);
+}*/
 
+/*bool Update(const std::string& updatePackage)
+{
+
+}*/
