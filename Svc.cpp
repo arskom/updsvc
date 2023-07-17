@@ -10,14 +10,13 @@
 #include "UpdSvc.h"
 #include "json.hpp"
 
+#include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include <Msi.h>
 
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
-
-#define path TEXT("j_complete[" mgui - wgt "][" exe "][versionArray[versionArraySize-i]]")
 
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
@@ -217,7 +216,7 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
 
         ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
 
-        CreateRequest();
+        // CreateRequest();
 
         return;
     }
@@ -332,12 +331,13 @@ VOID SvcReportEvent(LPTSTR szFunction) {
     }
 }
 
-std::string CreateRequest() {
+std::string CreateRequest(bool file, std::string &serverName, std::string &path) {
     DWORD dwSize = 0;
     DWORD dwDownloaded = 0;
     LPSTR pszOutBuffer;
 
     std::stringstream sstr;
+    std::ofstream ostr;
 
     BOOL bResults = FALSE;
     HINTERNET hSession = NULL, hConnect = NULL, hRequest = NULL;
@@ -397,7 +397,12 @@ std::string CreateRequest() {
             }
 
             assert(dwSize == dwDownloaded);
-            sstr << std::string_view(pszOutBuffer, dwSize);
+            if (file) {
+                ostr << std::string_view(pszOutBuffer, dwSize);
+            }
+            else {
+                sstr << std::string_view(pszOutBuffer, dwSize);
+            }
             delete[] pszOutBuffer;
             SvcReportEvent("data read");
 
@@ -414,13 +419,21 @@ std::string CreateRequest() {
     }
 
     // Close any open handles.
-    if (hRequest)
+    if (hRequest) {
         WinHttpCloseHandle(hRequest);
-    if (hConnect)
+    }
+    if (hConnect) {
         WinHttpCloseHandle(hConnect);
-    if (hSession)
+    }
+    if (hSession) {
         WinHttpCloseHandle(hSession);
-    return sstr.str();
+    }
+    if (file) {
+        //  return ostr.str();
+    }
+    else {
+        return sstr.str();
+    }
 }
 
 std::string UpdateDetector(std::string sstr) {
