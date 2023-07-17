@@ -3,12 +3,13 @@
 
 int main(int argc, char *argv[])
 {
-    //CreateRequest();
+    /*CreateRequest();
     std::string version = GetProgramVersion();
     if (!version.empty())
     {
         std::cout << "Program Version: " << version << std::endl;
-    }
+    }*/
+
     UpdateDetector(CreateRequest());
     return 0;
 }
