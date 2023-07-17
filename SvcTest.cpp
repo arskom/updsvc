@@ -1,8 +1,7 @@
 #include "Svc.h"
 #include <iostream>
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     /*CreateRequest();
     std::string version = GetProgramVersion();
     if (!version.empty())
@@ -13,4 +12,3 @@ int main(int argc, char *argv[])
     UpdateDetector(CreateRequest());
     return 0;
 }
-

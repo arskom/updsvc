@@ -6,18 +6,18 @@
 
 #include <winhttp.h>
 
-#include "UpdSvc.h"
 #include "Svc.h"
+#include "UpdSvc.h"
 #include "json.hpp"
 
-#include <sstream>
 #include <iostream>
+#include <sstream>
 
 #include <Msi.h>
 
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
 
-#define path TEXT("j_complete["mgui-wgt"]["exe"][versionArray[versionArraySize-i]]")
+#define path TEXT("j_complete[" mgui - wgt "][" exe "][versionArray[versionArraySize-i]]")
 
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
@@ -25,14 +25,14 @@ static SERVICE_STATUS_HANDLE gSvcStatusHandle;
 static HANDLE ghSvcStopEvent = NULL;
 
 VOID SvcInstall(void);
-VOID WINAPI SvcCtrlHandler( DWORD ); 
-VOID WINAPI SvcMain( DWORD, LPTSTR * ); 
+VOID WINAPI SvcCtrlHandler(DWORD);
+VOID WINAPI SvcMain(DWORD, LPTSTR *);
 
-VOID ReportSvcStatus( DWORD, DWORD, DWORD );
+VOID ReportSvcStatus(DWORD, DWORD, DWORD);
 VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
 
-std::vector<int> splitString(const std::string& str, char delimiter);
+std::vector<int> splitString(const std::string &str, char delimiter);
 std::string GetProgramVersion();
 
 /**
@@ -44,28 +44,23 @@ std::string GetProgramVersion();
 
 #ifndef SVC_TEST
 
-int __cdecl _tmain(int argc, TCHAR *argv[])
-{
+int __cdecl _tmain(int argc, TCHAR *argv[]) {
     // If command-line parameter is "install", install the service.
     // Otherwise, the service is probably being started by the SCM.
 
-    if( lstrcmpi( argv[1], TEXT("install")) == 0 )
-    {
+    if (lstrcmpi(argv[1], TEXT("install")) == 0) {
         SvcInstall();
         return 0;
     }
 
     // TO_DO: Add any additional services for the process to this table.
-    SERVICE_TABLE_ENTRY DispatchTable[] = 
-    { 
-        { SVCNAME, (LPSERVICE_MAIN_FUNCTION) SvcMain }, 
-        { NULL, NULL } 
-    }; 
- 
-    // This call returns when the service has stopped. 
+    SERVICE_TABLE_ENTRY DispatchTable[] = {
+            {SVCNAME, (LPSERVICE_MAIN_FUNCTION)SvcMain}, {NULL, NULL}};
+
+    // This call returns when the service has stopped.
     // The process should simply terminate when the call returns.
 
-    if (!StartServiceCtrlDispatcher(DispatchTable)) {
+    if (! StartServiceCtrlDispatcher(DispatchTable)) {
         SvcReportEvent(TEXT("StartServiceCtrlDispatcher"));
     }
 
@@ -84,14 +79,12 @@ int __cdecl _tmain(int argc, TCHAR *argv[])
 // Return value:
 //   None
 //
-VOID SvcInstall()
-{
+VOID SvcInstall() {
     SC_HANDLE schSCManager;
     SC_HANDLE schService;
     TCHAR szUnquotedPath[MAX_PATH];
 
-    if( !GetModuleFileName( NULL, szUnquotedPath, MAX_PATH ) )
-    {
+    if (! GetModuleFileName(NULL, szUnquotedPath, MAX_PATH)) {
         printf("Cannot install service (%d)\n", GetLastError());
         return;
     }
@@ -103,50 +96,47 @@ VOID SvcInstall()
     TCHAR szPath[MAX_PATH];
     StringCbPrintf(szPath, MAX_PATH, TEXT("\"%s\""), szUnquotedPath);
 
-    // Get a handle to the SCM database. 
- 
-    schSCManager = OpenSCManager( 
-        NULL,                    // local computer
-        NULL,                    // ServicesActive database 
-        SC_MANAGER_ALL_ACCESS);  // full access rights 
- 
-    if (NULL == schSCManager) 
-    {
+    // Get a handle to the SCM database.
+
+    schSCManager = OpenSCManager(NULL, // local computer
+            NULL, // ServicesActive database
+            SC_MANAGER_ALL_ACCESS); // full access rights
+
+    if (NULL == schSCManager) {
         printf("OpenSCManager failed (%d)\n", GetLastError());
         return;
     }
 
     // Create the service
 
-    schService = CreateService( 
-        schSCManager,              // SCM database 
-        SVCNAME,                   // name of service 
-        SVCNAME,                   // service name to display 
-        SERVICE_ALL_ACCESS,        // desired access 
-        SERVICE_WIN32_OWN_PROCESS, // service type 
-        SERVICE_DEMAND_START,      // start type 
-        SERVICE_ERROR_NORMAL,      // error control type 
-        szPath,                    // path to service's binary 
-        NULL,                      // no load ordering group 
-        NULL,                      // no tag identifier 
-        NULL,                      // no dependencies 
-        NULL,                      // LocalSystem account 
-        NULL);                     // no password 
- 
-    if (schService == NULL) 
-    {
-        printf("CreateService failed (%d)\n", GetLastError()); 
+    schService = CreateService(schSCManager, // SCM database
+            SVCNAME, // name of service
+            SVCNAME, // service name to display
+            SERVICE_ALL_ACCESS, // desired access
+            SERVICE_WIN32_OWN_PROCESS, // service type
+            SERVICE_DEMAND_START, // start type
+            SERVICE_ERROR_NORMAL, // error control type
+            szPath, // path to service's binary
+            NULL, // no load ordering group
+            NULL, // no tag identifier
+            NULL, // no dependencies
+            NULL, // LocalSystem account
+            NULL); // no password
+
+    if (schService == NULL) {
+        printf("CreateService failed (%d)\n", GetLastError());
         CloseServiceHandle(schSCManager);
         return;
     }
-    else printf("Service installed successfully\n"); 
+    else
+        printf("Service installed successfully\n");
 
-    CloseServiceHandle(schService); 
+    CloseServiceHandle(schService);
     CloseServiceHandle(schSCManager);
 }
 
 //
-// Purpose: 
+// Purpose:
 //   Entry point for the service
 //
 // Parameters:
@@ -154,40 +144,36 @@ VOID SvcInstall()
 //   lpszArgv - Array of strings. The first string is the name of
 //     the service and subsequent strings are passed by the process
 //     that called the StartService function to start the service.
-// 
+//
 // Return value:
 //   None.
 //
-VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
-{
+VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR *lpszArgv) {
     // Register the handler function for the service
 
-    gSvcStatusHandle = RegisterServiceCtrlHandler( 
-        SVCNAME, 
-        SvcCtrlHandler);
+    gSvcStatusHandle = RegisterServiceCtrlHandler(SVCNAME, SvcCtrlHandler);
 
-    if( !gSvcStatusHandle )
-    { 
-        SvcReportEvent(TEXT("RegisterServiceCtrlHandler")); 
-        return; 
-    } 
+    if (! gSvcStatusHandle) {
+        SvcReportEvent(TEXT("RegisterServiceCtrlHandler"));
+        return;
+    }
 
     // These SERVICE_STATUS members remain as set here
 
-    gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS; 
-    gSvcStatus.dwServiceSpecificExitCode = 0;    
+    gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+    gSvcStatus.dwServiceSpecificExitCode = 0;
 
     // Report initial status to the SCM
 
-    ReportSvcStatus( SERVICE_START_PENDING, NO_ERROR, 3000 );
+    ReportSvcStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
 
     // Perform service-specific initialization and work.
 
-    SvcInit( dwArgc, lpszArgv );
+    SvcInit(dwArgc, lpszArgv);
 }
 
 //
-// Purpose: 
+// Purpose:
 //   The service code
 //
 // Parameters:
@@ -195,45 +181,41 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
 //   lpszArgv - Array of strings. The first string is the name of
 //     the service and subsequent strings are passed by the process
 //     that called the StartService function to start the service.
-// 
+//
 // Return value:
 //   None
 //
-VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
-{
+VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
     // TO_DO: Declare and set any required variables.
-    //   Be sure to periodically call ReportSvcStatus() with 
+    //   Be sure to periodically call ReportSvcStatus() with
     //   SERVICE_START_PENDING. If initialization fails, call
     //   ReportSvcStatus with SERVICE_STOPPED.
 
     // Create an event. The control handler function, SvcCtrlHandler,
     // signals this event when it receives the stop control code.
 
-    ghSvcStopEvent = CreateEvent(
-                         NULL,    // default security attributes
-                         TRUE,    // manual reset event
-                         FALSE,   // not signaled
-                         NULL);   // no name
+    ghSvcStopEvent = CreateEvent(NULL, // default security attributes
+            TRUE, // manual reset event
+            FALSE, // not signaled
+            NULL); // no name
 
-    if ( ghSvcStopEvent == NULL)
-    {
-        ReportSvcStatus( SERVICE_STOPPED, GetLastError(), 0 );
+    if (ghSvcStopEvent == NULL) {
+        ReportSvcStatus(SERVICE_STOPPED, GetLastError(), 0);
         return;
     }
 
     // Report running status when initialization is complete.
 
-    ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
+    ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
     // TO_DO: Perform work until service stops.
 
-    while(1)
-    {
+    while (1) {
         // Check whether to stop the service.
 
         WaitForSingleObject(ghSvcStopEvent, INFINITE);
 
-        ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
+        ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
 
         CreateRequest();
 
@@ -242,22 +224,19 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 }
 
 //
-// Purpose: 
+// Purpose:
 //   Sets the current service status and reports it to the SCM.
 //
 // Parameters:
 //   dwCurrentState - The current state (see SERVICE_STATUS)
 //   dwWin32ExitCode - The system error code
-//   dwWaitHint - Estimated time for pending operation, 
+//   dwWaitHint - Estimated time for pending operation,
 //     in milliseconds
-// 
+//
 // Return value:
 //   None
 //
-VOID ReportSvcStatus( DWORD dwCurrentState,
-                      DWORD dwWin32ExitCode,
-                      DWORD dwWaitHint)
-{
+VOID ReportSvcStatus(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint) {
     static DWORD dwCheckPoint = 1;
 
     // Fill in the SERVICE_STATUS structure.
@@ -268,180 +247,157 @@ VOID ReportSvcStatus( DWORD dwCurrentState,
 
     if (dwCurrentState == SERVICE_START_PENDING)
         gSvcStatus.dwControlsAccepted = 0;
-    else gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+    else
+        gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
 
-    if ( (dwCurrentState == SERVICE_RUNNING) ||
-           (dwCurrentState == SERVICE_STOPPED) )
+    if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED))
         gSvcStatus.dwCheckPoint = 0;
-    else gSvcStatus.dwCheckPoint = dwCheckPoint++;
+    else
+        gSvcStatus.dwCheckPoint = dwCheckPoint++;
 
     // Report the status of the service to the SCM.
-    SetServiceStatus( gSvcStatusHandle, &gSvcStatus );
+    SetServiceStatus(gSvcStatusHandle, &gSvcStatus);
 }
 
 //
-// Purpose: 
+// Purpose:
 //   Called by SCM whenever a control code is sent to the service
 //   using the ControlService function.
 //
 // Parameters:
 //   dwCtrl - control code
-// 
+//
 // Return value:
 //   None
 //
-VOID WINAPI SvcCtrlHandler( DWORD dwCtrl )
-{
-   // Handle the requested control code. 
+VOID WINAPI SvcCtrlHandler(DWORD dwCtrl) {
+    // Handle the requested control code.
 
-   switch(dwCtrl) 
-   {  
-      case SERVICE_CONTROL_STOP: 
-         ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+    switch (dwCtrl) {
+    case SERVICE_CONTROL_STOP:
+        ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
-         // Signal the service to stop.
+        // Signal the service to stop.
 
-         SetEvent(ghSvcStopEvent);
-         ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
-         
-         return;
- 
-      case SERVICE_CONTROL_INTERROGATE: 
-         break; 
- 
-      default: 
-         break;
-   } 
-   
+        SetEvent(ghSvcStopEvent);
+        ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
+
+        return;
+
+    case SERVICE_CONTROL_INTERROGATE:
+        break;
+
+    default:
+        break;
+    }
 }
 
 //
-// Purpose: 
+// Purpose:
 //   Logs messages to the event log
 //
 // Parameters:
 //   szFunction - name of function that failed
-// 
+//
 // Return value:
 //   None
 //
 // Remarks:
 //   The service must have an entry in the Application event log.
 //
-VOID SvcReportEvent(LPTSTR szFunction) 
-{ 
+VOID SvcReportEvent(LPTSTR szFunction) {
     HANDLE hEventSource;
     LPCTSTR lpszStrings[2];
     TCHAR Buffer[80];
 
     hEventSource = RegisterEventSource(NULL, SVCNAME);
 
-    if( NULL != hEventSource )
-    {
+    if (NULL != hEventSource) {
         StringCchPrintf(Buffer, 80, TEXT("%s failed with %d"), szFunction, GetLastError());
 
         lpszStrings[0] = SVCNAME;
         lpszStrings[1] = Buffer;
 
-        ReportEvent(hEventSource,        // event log handle
-                    EVENTLOG_ERROR_TYPE, // event type
-                    0,                   // event category
-                    SVC_ERROR,           // event identifier
-                    NULL,                // no security identifier
-                    2,                   // size of lpszStrings array
-                    0,                   // no binary data
-                    lpszStrings,         // array of strings
-                    NULL);               // no binary data
+        ReportEvent(hEventSource, // event log handle
+                EVENTLOG_ERROR_TYPE, // event type
+                0, // event category
+                SVC_ERROR, // event identifier
+                NULL, // no security identifier
+                2, // size of lpszStrings array
+                0, // no binary data
+                lpszStrings, // array of strings
+                NULL); // no binary data
 
         DeregisterEventSource(hEventSource);
     }
 }
 
-std::string CreateRequest()
-{
-    DWORD dwSize=0;
-    DWORD dwDownloaded=0;
+std::string CreateRequest() {
+    DWORD dwSize = 0;
+    DWORD dwDownloaded = 0;
     LPSTR pszOutBuffer;
 
     std::stringstream sstr;
 
-    BOOL  bResults = FALSE;
-    HINTERNET hSession = NULL,
-        hConnect = NULL,
-        hRequest = NULL;
+    BOOL bResults = FALSE;
+    HINTERNET hSession = NULL, hConnect = NULL, hRequest = NULL;
 
     // Use WinHttpOpen to obtain a session handle.
-    hSession = WinHttpOpen(  L"Http Request Attempt",
-                           WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                           WINHTTP_NO_PROXY_NAME,
-                           WINHTTP_NO_PROXY_BYPASS, 0);
+    hSession = WinHttpOpen(L"Http Request Attempt", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 
     // Specify an HTTP server.
-    if (hSession){
-        hConnect = WinHttpConnect( hSession, L"ampmail.net",
-                                  INTERNET_DEFAULT_PORT, 0);
-
+    if (hSession) {
+        hConnect = WinHttpConnect(hSession, L"ampmail.net", INTERNET_DEFAULT_PORT, 0);
     }
     // Create an HTTP Request handle.
-    if (hConnect){
-        hRequest = WinHttpOpenRequest( hConnect, L"GET",
-                                      L"/release/files.json",
-                                      NULL, WINHTTP_NO_REFERER,
-                                      WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                      0);
+    if (hConnect) {
+        hRequest = WinHttpOpenRequest(hConnect, L"GET", L"/release/files.json", NULL,
+                WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
     }
     // Send a Request.
-    if (hRequest){
-        bResults = WinHttpSendRequest( hRequest,
-                                      WINHTTP_NO_ADDITIONAL_HEADERS,
-                                      0, WINHTTP_NO_REQUEST_DATA, 0,
-                                      0, 0);
+    if (hRequest) {
+        bResults = WinHttpSendRequest(
+                hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
         SvcReportEvent("request sent");
     }
 
     // End the request.
     if (bResults)
-        bResults = WinHttpReceiveResponse( hRequest, NULL);
+        bResults = WinHttpReceiveResponse(hRequest, NULL);
 
     // Keep checking for data until there is nothing left.
-    if (bResults)
-    {
-        do
-        {
+    if (bResults) {
+        do {
             // Check for available data.
             dwSize = 0;
-            if (!WinHttpQueryDataAvailable( hRequest, &dwSize))
-            {
-                printf( "Error %u in WinHttpQueryDataAvailable.\n",
-                       GetLastError());
+            if (! WinHttpQueryDataAvailable(hRequest, &dwSize)) {
+                printf("Error %u in WinHttpQueryDataAvailable.\n", GetLastError());
                 break;
             }
 
             // No more available data.
-            if (!dwSize)
+            if (! dwSize)
                 break;
 
             // Allocate space for the buffer.
-            pszOutBuffer = new char[dwSize+1];
-            if (!pszOutBuffer)
-            {
+            pszOutBuffer = new char[dwSize + 1];
+            if (! pszOutBuffer) {
                 printf("Out of memory\n");
                 break;
             }
 
             // Read the Data.
-            ZeroMemory(pszOutBuffer, dwSize+1);
+            ZeroMemory(pszOutBuffer, dwSize + 1);
 
-            if (!WinHttpReadData( hRequest, (LPVOID)pszOutBuffer,
-                                 dwSize, &dwDownloaded))
-            {
-                printf( "Error %u in WinHttpReadData.\n", GetLastError());
+            if (! WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {
+                printf("Error %u in WinHttpReadData.\n", GetLastError());
                 SvcReportEvent("failed to read");
                 break;
             }
 
             assert(dwSize == dwDownloaded);
-            sstr << std::string_view(pszOutBuffer,dwSize);
+            sstr << std::string_view(pszOutBuffer, dwSize);
             delete[] pszOutBuffer;
             SvcReportEvent("data read");
 
@@ -452,34 +408,33 @@ std::string CreateRequest()
 
         } while (dwSize > 0);
     }
-    else
-    {
+    else {
         // Report any errors.
-        printf( "Error %d has occurred.\n", GetLastError() );
+        printf("Error %d has occurred.\n", GetLastError());
     }
 
     // Close any open handles.
-    if (hRequest) WinHttpCloseHandle(hRequest);
-    if (hConnect) WinHttpCloseHandle(hConnect);
-    if (hSession) WinHttpCloseHandle(hSession);
+    if (hRequest)
+        WinHttpCloseHandle(hRequest);
+    if (hConnect)
+        WinHttpCloseHandle(hConnect);
+    if (hSession)
+        WinHttpCloseHandle(hSession);
     return sstr.str();
 }
 
-std::string UpdateDetector(std::string sstr)
-{
+std::string UpdateDetector(std::string sstr) {
     using json = nlohmann::json;
     json j_complete;
-    int upd=2;
+    int upd = 2;
     bool exist;
     std::string version = GetProgramVersion();
 
-    try
-    {
+    try {
         // parsing input with a syntax error
         j_complete = json::parse(sstr);
     }
-    catch (json::parse_error& e)
-    {
+    catch (json::parse_error &e) {
         // output exception information
         std::cout << "message: " << e.what() << '\n'
                   << "exception id: " << e.id << '\n'
@@ -487,43 +442,40 @@ std::string UpdateDetector(std::string sstr)
         return "";
     }
 
-    for (auto it = j_complete["mgui-wgt"]["exe"].rbegin(); it != j_complete["mgui-wgt"]["exe"].rend(); ++it)
-    {
-        if(upd == 2)
-        {
+    for (auto it = j_complete["mgui-wgt"]["exe"].rbegin();
+            it != j_complete["mgui-wgt"]["exe"].rend(); ++it) {
+        if (upd == 2) {
             upd = compareVersions(it.key(), version);
-            if(upd == -1 || upd == 0){
-            std::cout << "Update not required" << std::endl;
+            if (upd == -1 || upd == 0) {
+                std::cout << "Update not required" << std::endl;
                 return "";
             }
         }
 
-        for(auto jt = it.value().begin() ; jt != it.value().end() ; ++jt){
-            if(jt.key() == version){
+        for (auto jt = it.value().begin(); jt != it.value().end(); ++jt) {
+            if (jt.key() == version) {
                 exist = true;
                 break;
             }
             else
                 exist = false;
         }
-        if(exist){
-            if(j_complete["mgui-wgt"]["exe"][it.key()][version]["channel"] == "Stable"){
+        if (exist) {
+            if (j_complete["mgui-wgt"]["exe"][it.key()][version]["channel"] == "Stable") {
                 std::cout << j_complete["mgui-wgt"]["exe"][it.key()][version]["url"] << std::endl;
                 return j_complete["mgui-wgt"]["exe"][it.key()][version]["url"];
             }
         }
-        else
-        {
-            if(j_complete["mgui-wgt"]["exe"][it.key()]["null"]["channel"] == "Stable"){
-            std::cout << j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"] << std::endl;
-            return j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"];
+        else {
+            if (j_complete["mgui-wgt"]["exe"][it.key()]["null"]["channel"] == "Stable") {
+                std::cout << j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"] << std::endl;
+                return j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"];
+            }
         }
-     }
     }
 }
 
-std::vector<int> splitString(const std::string& str, char delimiter)
-{
+std::vector<int> splitString(const std::string &str, char delimiter) {
     std::vector<int> nums;
     std::stringstream ss(str);
     std::string num;
@@ -534,28 +486,31 @@ std::vector<int> splitString(const std::string& str, char delimiter)
     return nums;
 }
 
-int compareVersions(const std::string& version1, const std::string& version2) {
+int compareVersions(const std::string &version1, const std::string &version2) {
     std::vector<int> v1 = splitString(version1, '.');
     std::vector<int> v2 = splitString(version2, '.');
 
     // Compare major version
     if (v1[0] < v2[0]) {
         return -1;
-    } else if (v1[0] > v2[0]) {
+    }
+    else if (v1[0] > v2[0]) {
         return 1;
     }
 
     // Compare minor version
     if (v1[1] < v2[1]) {
         return -1;
-    } else if (v1[1] > v2[1]) {
+    }
+    else if (v1[1] > v2[1]) {
         return 1;
     }
 
     // Compare patch version
     if (v1[2] < v2[2]) {
         return -1;
-    } else if (v1[2] > v2[2]) {
+    }
+    else if (v1[2] > v2[2]) {
         return 1;
     }
 
@@ -577,21 +532,16 @@ int compareVersions(const std::string& version1, const std::string& version2) {
     return arrayData;
 }*/
 
-
-//Function to retrieve the version of a program
-std::string GetProgramVersion()
-{
+// Function to retrieve the version of a program
+std::string GetProgramVersion() {
     char versionBuffer[256];
     DWORD bufferSize = sizeof(versionBuffer);
 
-    //Use MsiGetProductInfo for get the version
+    // Use MsiGetProductInfo for get the version
     UINT result = MsiGetProductInfo(uid, INSTALLPROPERTY_VERSIONSTRING, versionBuffer, &bufferSize);
-    if (result == ERROR_SUCCESS)
-    {
+    if (result == ERROR_SUCCESS) {
         return std::string(versionBuffer);
     }
 
     return "";
 }
-
-
