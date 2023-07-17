@@ -9,6 +9,6 @@ int main(int argc, char *argv[]) {
         std::cout << "Program Version: " << version << std::endl;
     }*/
 
-    UpdateDetector(CreateRequest());
+    // UpdateDetector(CreateRequest());
     return 0;
 }
