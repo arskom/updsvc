@@ -23,6 +23,6 @@ struct Buffer{
 std::string CreateRequest();
 std::string GetProgramVersion();
 std::string UpdateDetector(std::string sstr);
-
+int compareVersions(const std::string& version1, const std::string& version2);
 
 #endif // SVC_H
