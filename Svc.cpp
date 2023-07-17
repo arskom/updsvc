@@ -426,8 +426,6 @@ std::string CreateRequest() {
 std::string UpdateDetector(std::string sstr) {
     using json = nlohmann::json;
     json j_complete;
-    int upd = 2;
-    bool exist;
     std::string version = GetProgramVersion();
 
     try {
@@ -443,36 +441,36 @@ std::string UpdateDetector(std::string sstr) {
     }
 
     const auto &windows = j_complete["mgui-wgt"]["exe"];
+
     for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
-        if (upd == 2) {
-            upd = compareVersions(it.key(), version);
-            if (upd == -1 || upd == 0) {
-                std::cout << "Update not required" << std::endl;
-                return "";
+        // check whether current version is smaller than the version at hand
+        if (compareVersions(it.key(), version) != 1) {
+            std::cout << "Version " << it.key() << " skipped" << std::endl;
+            continue;
+        }
+
+        auto &val = it.value();
+        for (auto jt = val.begin(); jt != val.end(); ++jt) {
+            if (jt.key() == version && jt.value()["channel"] == "Stable") {
+                const auto &url = jt.value()["url"];
+                std::cout << "Patch update from " << jt.key() << " to " << it.key()
+                          << " url: " << url << std::endl;
+                return url;
             }
         }
 
-        for (auto jt = it.value().begin(); jt != it.value().end(); ++jt) {
-            if (jt.key() == version) {
-                exist = true;
-                break;
-            }
-            else
-                exist = false;
+        if (val["null"]["channel"] == "Stable") {
+            const auto &url = val["null"]["url"];
+            std::cout << "Full update from " << version << " to " << it.key() << " url: " << url
+                      << std::endl;
+            return url;
         }
-        if (exist) {
-            if (it.value()[version]["channel"] == "Stable") {
-                std::cout << it.value()[version]["url"] << std::endl;
-                return it.value()[version]["url"];
-            }
-        }
-        else {
-            if (it.value()["null"]["channel"] == "Stable") {
-                std::cout << it.value()["null"]["url"] << std::endl;
-                return it.value()["null"]["url"];
-            }
-        }
+
+        std::cout << "Package version " << it.key() << " channel " << val["null"]["channel"]
+                  << " was skipped" << std::endl;
     }
+
+    return "";
 }
 
 std::vector<int> splitString(const std::string &str, char delimiter) {
