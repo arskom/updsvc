@@ -442,8 +442,8 @@ std::string UpdateDetector(std::string sstr) {
         return "";
     }
 
-    for (auto it = j_complete["mgui-wgt"]["exe"].rbegin();
-            it != j_complete["mgui-wgt"]["exe"].rend(); ++it) {
+    const auto &windows = j_complete["mgui-wgt"]["exe"];
+    for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
         if (upd == 2) {
             upd = compareVersions(it.key(), version);
             if (upd == -1 || upd == 0) {
@@ -461,15 +461,15 @@ std::string UpdateDetector(std::string sstr) {
                 exist = false;
         }
         if (exist) {
-            if (j_complete["mgui-wgt"]["exe"][it.key()][version]["channel"] == "Stable") {
-                std::cout << j_complete["mgui-wgt"]["exe"][it.key()][version]["url"] << std::endl;
-                return j_complete["mgui-wgt"]["exe"][it.key()][version]["url"];
+            if (it.value()[version]["channel"] == "Stable") {
+                std::cout << it.value()[version]["url"] << std::endl;
+                return it.value()[version]["url"];
             }
         }
         else {
-            if (j_complete["mgui-wgt"]["exe"][it.key()]["null"]["channel"] == "Stable") {
-                std::cout << j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"] << std::endl;
-                return j_complete["mgui-wgt"]["exe"][it.key()]["null"]["url"];
+            if (it.value()["null"]["channel"] == "Stable") {
+                std::cout << it.value()["null"]["url"] << std::endl;
+                return it.value()["null"]["url"];
             }
         }
     }
