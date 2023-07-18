@@ -336,9 +336,8 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     DWORD dwDownloaded = 0;
     LPSTR pszOutBuffer;
 
-    std::map<std::fstream *, std::string> stream_file_table;
-
     std::stringstream sstr;
+
     std::ofstream ostr;
     std::string filename = "update.exe";
     ostr.open(filename);
