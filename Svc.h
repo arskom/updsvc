@@ -22,5 +22,6 @@ std::string CreateRequest(bool file, std::string &serverName, std::string &path)
 std::string GetProgramVersion();
 std::string UpdateDetector(std::string sstr);
 int compareVersions(const std::string &version1, const std::string &version2);
+std::string urlSplit(bool ispath, std::string &url);
 
 #endif // SVC_H
