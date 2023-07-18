@@ -19,14 +19,17 @@ int main(int argc, char *argv[]) {
     std::cout << "Domain: " << domain << std::endl;
     std::cout << "Path: " << path << std::endl;
     std::cout << "Filename: " << filename << std::endl;*/
-
-    const char *tempDir = std::getenv("TEMP");
+    // temp location
+    /*const char *tempDir = std::getenv("TEMP");
     if (tempDir == nullptr) {
         std::cerr << "Failed to retrieve the temporary directory path." << std::endl;
     }
     std::string filename = "mgui-wgt-4.1.93-x64_mgui-wgt-4.1.92-x64.exe";
-    std::string tempFilePath = std::string(tempDir) + "\\" + filename;
-    std::cout << "file path: " << tempFilePath << std::endl;
-
+    std::string tempFilePath = std::string(tempDir) + "\\updsvc\\" + filename;
+    std::cout << "file path: " << tempFilePath << std::endl;*/
+    std::string path = "/release/mgui-wgt/mgui-wgt-4.1.93-x64_mgui-wgt-4.1.92-x64.exe";
+    std::size_t lastSlashPos = path.find_last_of("/");
+    std::string filename = path.substr(lastSlashPos + 1);
+    std::cout << "file name: " << filename << std::endl;
     return 0;
 }
