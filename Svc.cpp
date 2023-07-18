@@ -16,6 +16,8 @@
 
 #include <Msi.h>
 
+#include <regex>
+
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
 
 #define SVCNAME TEXT("UpdSvc")
@@ -32,7 +34,8 @@ VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
-static std::string CreateRequest(bool file, std::string &domain, std::string &path);
+static LPCWSTR wStringCreator(std::string s);
+static bool matchFileRegex(const std::string &input, const std::regex &pattern);
 
 /**
  * @brief Entry point for the process
@@ -127,8 +130,9 @@ VOID SvcInstall() {
         CloseServiceHandle(schSCManager);
         return;
     }
-    else
+    else {
         printf("Service installed successfully\n");
+    }
 
     CloseServiceHandle(schService);
     CloseServiceHandle(schSCManager);
@@ -244,15 +248,19 @@ VOID ReportSvcStatus(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHi
     gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
     gSvcStatus.dwWaitHint = dwWaitHint;
 
-    if (dwCurrentState == SERVICE_START_PENDING)
+    if (dwCurrentState == SERVICE_START_PENDING) {
         gSvcStatus.dwControlsAccepted = 0;
-    else
+    }
+    else {
         gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+    }
 
-    if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED))
+    if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED)) {
         gSvcStatus.dwCheckPoint = 0;
-    else
+    }
+    else {
         gSvcStatus.dwCheckPoint = dwCheckPoint++;
+    }
 
     // Report the status of the service to the SCM.
     SetServiceStatus(gSvcStatusHandle, &gSvcStatus);
@@ -337,10 +345,37 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     LPSTR pszOutBuffer;
 
     std::stringstream sstr;
-
     std::ofstream ostr;
-    std::string filename = "update.exe";
-    ostr.open(filename);
+
+    // Convert string to LPWSTR for WinHttpConnect and WinHttpOpenRequest function
+    LPCWSTR wdomain = wStringCreator(domain);
+    LPCWSTR wpath = wStringCreator(path);
+
+    // Get file name from path
+    std::size_t lastSlashPos = path.find_last_of("/");
+    std::string filename = path.substr(lastSlashPos + 1);
+
+    // Control if file name is valid
+    std::regex acceptedRegex;
+    if (! (matchFileRegex(filename, acceptedRegex))) {
+        std::cerr << "Invalid file, this file cannot be downloaded" << std::endl;
+    }
+
+    // Get path of default location for temporary files (%userprofile%\AppData\Local\Temp)
+    const char *tempDir = std::getenv("TEMP");
+    if (tempDir == nullptr) {
+        std::cerr << "Failed to retrieve the temporary directory path." << std::endl;
+        return "";
+    }
+    // Open file at %userprofile%\AppData\Local\Temp
+    if (file) {
+        std::string tempFilePath = std::string(tempDir) + "\\" + filename;
+        ostr.open(tempFilePath, std::ios::trunc | std::ios::binary);
+        if (! ostr.is_open()) {
+            std::cerr << "Failed to open file." << std::endl;
+            return "";
+        }
+    }
 
     BOOL bResults = FALSE;
     HINTERNET hSession = NULL, hConnect = NULL, hRequest = NULL;
@@ -351,12 +386,12 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
 
     // Specify an HTTP server.
     if (hSession) {
-        hConnect = WinHttpConnect(hSession, L"ampmail.net", INTERNET_DEFAULT_PORT, 0);
+        hConnect = WinHttpConnect(hSession, wdomain, INTERNET_DEFAULT_PORT, 0);
     }
     // Create an HTTP Request handle.
     if (hConnect) {
-        hRequest = WinHttpOpenRequest(hConnect, L"GET", L"/release/files.json", NULL,
-                WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+        hRequest = WinHttpOpenRequest(
+                hConnect, L"GET", wpath, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
     }
     // Send a Request.
     if (hRequest) {
@@ -366,8 +401,9 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     }
 
     // End the request.
-    if (bResults)
+    if (bResults) {
         bResults = WinHttpReceiveResponse(hRequest, NULL);
+    }
 
     // Keep checking for data until there is nothing left.
     if (bResults) {
@@ -380,8 +416,9 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
             }
 
             // No more available data.
-            if (! dwSize)
+            if (! dwSize) {
                 break;
+            }
 
             // Allocate space for the buffer.
             pszOutBuffer = new char[dwSize + 1];
@@ -411,14 +448,15 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
 
             // This condition should never be reached since WinHttpQueryDataAvailable
             // reported that there are bits to read.
-            if (dwDownloaded == 0)
+            if (dwDownloaded == 0) {
                 break;
+            }
 
         } while (dwSize > 0);
     }
     else {
         // Report any errors.
-        printf("Error %d has occurred.\n", GetLastError());
+        printf("Error %lu has occurred.\n", GetLastError());
     }
 
     // Close any open handles.
@@ -533,17 +571,16 @@ int compareVersions(const std::string &version1, const std::string &version2) {
     return 0;
 }
 
-std::string urlSplit(bool path, std::string &url) {
-    if (url.find("https://" == 0)) {
-        url.erase(0, 8);
+void urlSplit(const std::string &url, std::string &domain, std::string &path) {
+    std::string modifiedUrl = url;
+    if (modifiedUrl.find("https://" == 0)) {
+        modifiedUrl.erase(0, 8);
     }
-    size_t splitPos = url.find('/');
-    if (! path) {
-        return url.substr(0, splitPos);
-    }
-    else {
-        return url.substr(splitPos);
-    }
+
+    size_t firstSlashPos = modifiedUrl.find('/');
+
+    domain = modifiedUrl.substr(0, firstSlashPos);
+    path = modifiedUrl.substr(firstSlashPos);
 }
 
 // Function to retrieve the version of a program
@@ -558,4 +595,21 @@ std::string GetProgramVersion() {
     }
 
     return "";
+}
+
+LPCWSTR wStringCreator(std::string s) {
+    std::wstring temp = std::wstring(s.begin(), s.end());
+    LPCWSTR wideString = temp.c_str();
+    return wideString;
+}
+
+bool matchFileRegex(const std::string &input, const std::regex &pattern) {
+    if (std::regex_match(input, pattern)) {
+        std::cout << "Valid file name " << input << std::endl;
+        return true;
+    }
+    else {
+        std::cout << "Invalid file name" << std::endl;
+        return false;
+    }
 }
