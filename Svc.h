@@ -18,10 +18,10 @@ struct Buffer {
     }
 };
 
-std::string CreateRequest(bool file, std::string &serverName, std::string &path);
+std::string CreateRequest(bool file, std::string &domain, std::string &path);
 std::string GetProgramVersion();
 std::string UpdateDetector(std::string sstr);
 int compareVersions(const std::string &version1, const std::string &version2);
-std::string urlSplit(bool ispath, std::string &url);
+void urlSplit(const std::string &url, std::string &domain, std::string &path);
 
 #endif // SVC_H
