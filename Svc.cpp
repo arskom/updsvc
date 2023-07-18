@@ -31,8 +31,8 @@ VOID ReportSvcStatus(DWORD, DWORD, DWORD);
 VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
 
-std::vector<int> splitString(const std::string &str, char delimiter);
-std::string GetProgramVersion();
+static std::vector<int> splitString(const std::string &str, char delimiter);
+static std::string CreateRequest(bool file, std::string &domain, std::string &path);
 
 /**
  * @brief Entry point for the process
@@ -331,13 +331,17 @@ VOID SvcReportEvent(LPTSTR szFunction) {
     }
 }
 
-std::string CreateRequest(bool file, std::string &serverName, std::string &path) {
+std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     DWORD dwSize = 0;
     DWORD dwDownloaded = 0;
     LPSTR pszOutBuffer;
 
+    std::map<std::fstream *, std::string> stream_file_table;
+
     std::stringstream sstr;
     std::ofstream ostr;
+    std::string filename = "update.exe";
+    ostr.open(filename);
 
     BOOL bResults = FALSE;
     HINTERNET hSession = NULL, hConnect = NULL, hRequest = NULL;
@@ -429,7 +433,8 @@ std::string CreateRequest(bool file, std::string &serverName, std::string &path)
         WinHttpCloseHandle(hSession);
     }
     if (file) {
-        //  return ostr.str();
+        ostr.close();
+        return filename;
     }
     else {
         return sstr.str();
@@ -529,19 +534,18 @@ int compareVersions(const std::string &version1, const std::string &version2) {
     return 0;
 }
 
-/*nlohmann::json VersionLister(const nlohmann::json& jsonData, nlohmann::json& arrayData)
-{
-    for (const auto& item : jsonData.items()) {
-        arrayData.push_back(item.key());
+std::string urlSplit(bool path, std::string &url) {
+    if (url.find("https://" == 0)) {
+        url.erase(0, 8);
     }
-
-    // Print the version array
-    std::cout << "Version array elements:" << std::endl;
-    for (const auto& version : arrayData) {
-        std::cout << version << std::endl;
+    size_t splitPos = url.find('/');
+    if (! path) {
+        return url.substr(0, splitPos);
     }
-    return arrayData;
-}*/
+    else {
+        return url.substr(splitPos);
+    }
+}
 
 // Function to retrieve the version of a program
 std::string GetProgramVersion() {
