@@ -14,6 +14,6 @@ int main(int argc, char *argv[]) {
     url = "https://ampmail.net/release/mgui-wgt/mgui-wgt-4.1.93-x64_mgui-wgt-4.1.92-x64.exe";
     domain = urlSplit(0, url);
     path = urlSplit(1, url);
-    std::cout << "domain: " << domain << "    path: " << path << std::endl;
+    std::cout << "domain:" << domain << "    path:" << path << std::endl;
     return 0;
 }
