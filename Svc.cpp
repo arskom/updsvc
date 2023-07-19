@@ -10,14 +10,15 @@
 #include "UpdSvc.h"
 #include "json.hpp"
 
+#include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include <Msi.h>
 
-#define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
+#include <regex>
 
-#define path TEXT("j_complete[" mgui - wgt "][" exe "][versionArray[versionArraySize-i]]")
+#define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
 
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
@@ -32,8 +33,8 @@ VOID ReportSvcStatus(DWORD, DWORD, DWORD);
 VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
 
-std::vector<int> splitString(const std::string &str, char delimiter);
-std::string GetProgramVersion();
+static std::vector<int> splitString(const std::string &str, char delimiter);
+static bool matchFileRegex(const std::string &input, const std::regex &pattern);
 
 /**
  * @brief Entry point for the process
@@ -128,8 +129,9 @@ VOID SvcInstall() {
         CloseServiceHandle(schSCManager);
         return;
     }
-    else
+    else {
         printf("Service installed successfully\n");
+    }
 
     CloseServiceHandle(schService);
     CloseServiceHandle(schSCManager);
@@ -217,7 +219,7 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
 
         ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
 
-        CreateRequest();
+        // CreateRequest();
 
         return;
     }
@@ -245,15 +247,19 @@ VOID ReportSvcStatus(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHi
     gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
     gSvcStatus.dwWaitHint = dwWaitHint;
 
-    if (dwCurrentState == SERVICE_START_PENDING)
+    if (dwCurrentState == SERVICE_START_PENDING) {
         gSvcStatus.dwControlsAccepted = 0;
-    else
+    }
+    else {
         gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+    }
 
-    if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED))
+    if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED)) {
         gSvcStatus.dwCheckPoint = 0;
-    else
+    }
+    else {
         gSvcStatus.dwCheckPoint = dwCheckPoint++;
+    }
 
     // Report the status of the service to the SCM.
     SetServiceStatus(gSvcStatusHandle, &gSvcStatus);
@@ -332,12 +338,51 @@ VOID SvcReportEvent(LPTSTR szFunction) {
     }
 }
 
-std::string CreateRequest() {
+std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     DWORD dwSize = 0;
     DWORD dwDownloaded = 0;
     LPSTR pszOutBuffer;
 
     std::stringstream sstr;
+    std::ofstream ostr;
+
+    // Get wsting convert it to LPWSTR for WinHttpConnect and WinHttpOpenRequest function
+    std::wstring wdomain = s2ws(domain);
+    std::wstring wpath = s2ws(path);
+    LPCWSTR lpcwstrDomain = wdomain.c_str();
+    LPCWSTR lpcwstrPath = wpath.c_str();
+
+    // Get file name from path
+    std::size_t lastSlashPos = path.find_last_of("/");
+    std::string filename = path.substr(lastSlashPos + 1);
+
+    if (file) {
+        // Control if file name is valid
+        std::regex acceptedRegex("^[A-Za-z0-9\\-._]+$");
+        if (! (matchFileRegex(filename, acceptedRegex))) {
+            std::cerr << "Invalid file, this file cannot be downloaded" << std::endl;
+            return "";
+        }
+
+        // Get path of default location for temporary files (%userprofile%\AppData\Local\Temp)
+        const char *tempDir = std::getenv("TEMP");
+        if (tempDir == nullptr) {
+            std::cerr << "Failed to retrieve the temporary directory path." << std::endl;
+            return "";
+        }
+
+        // Open file at %userprofile%\AppData\Local\Temp
+        std::string tempFilePath = std::string(tempDir) + "\\updsvc";
+        if (! checkandCreateDirectory(tempFilePath)) {
+            tempFilePath = std::string(tempDir) + "\\" + filename;
+        }
+        tempFilePath = std::string(tempDir) + "\\updsvc\\" + filename;
+        ostr.open(tempFilePath, std::ios::trunc | std::ios::binary);
+        if (! ostr.is_open()) {
+            std::cerr << "Failed to open file." << std::endl;
+            return "";
+        }
+    }
 
     BOOL bResults = FALSE;
     HINTERNET hSession = NULL, hConnect = NULL, hRequest = NULL;
@@ -348,12 +393,12 @@ std::string CreateRequest() {
 
     // Specify an HTTP server.
     if (hSession) {
-        hConnect = WinHttpConnect(hSession, L"ampmail.net", INTERNET_DEFAULT_PORT, 0);
+        hConnect = WinHttpConnect(hSession, lpcwstrDomain, INTERNET_DEFAULT_PORT, 0);
     }
     // Create an HTTP Request handle.
     if (hConnect) {
-        hRequest = WinHttpOpenRequest(hConnect, L"GET", L"/release/files.json", NULL,
-                WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+        hRequest = WinHttpOpenRequest(hConnect, L"GET", lpcwstrPath, NULL, WINHTTP_NO_REFERER,
+                WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
     }
     // Send a Request.
     if (hRequest) {
@@ -363,8 +408,9 @@ std::string CreateRequest() {
     }
 
     // End the request.
-    if (bResults)
+    if (bResults) {
         bResults = WinHttpReceiveResponse(hRequest, NULL);
+    }
 
     // Keep checking for data until there is nothing left.
     if (bResults) {
@@ -377,8 +423,9 @@ std::string CreateRequest() {
             }
 
             // No more available data.
-            if (! dwSize)
+            if (! dwSize) {
                 break;
+            }
 
             // Allocate space for the buffer.
             pszOutBuffer = new char[dwSize + 1];
@@ -397,30 +444,45 @@ std::string CreateRequest() {
             }
 
             assert(dwSize == dwDownloaded);
-            sstr << std::string_view(pszOutBuffer, dwSize);
+            if (file) {
+                ostr << std::string_view(pszOutBuffer, dwSize);
+            }
+            else {
+                sstr << std::string_view(pszOutBuffer, dwSize);
+            }
             delete[] pszOutBuffer;
             SvcReportEvent("data read");
 
             // This condition should never be reached since WinHttpQueryDataAvailable
             // reported that there are bits to read.
-            if (dwDownloaded == 0)
+            if (dwDownloaded == 0) {
                 break;
+            }
 
         } while (dwSize > 0);
     }
     else {
         // Report any errors.
-        printf("Error %d has occurred.\n", GetLastError());
+        printf("Error %lu has occurred.\n", GetLastError());
     }
 
     // Close any open handles.
-    if (hRequest)
+    if (hRequest) {
         WinHttpCloseHandle(hRequest);
-    if (hConnect)
+    }
+    if (hConnect) {
         WinHttpCloseHandle(hConnect);
-    if (hSession)
+    }
+    if (hSession) {
         WinHttpCloseHandle(hSession);
-    return sstr.str();
+    }
+    if (file) {
+        ostr.close();
+        return filename;
+    }
+    else {
+        return sstr.str();
+    }
 }
 
 std::string UpdateDetector(std::string sstr) {
@@ -516,19 +578,17 @@ int compareVersions(const std::string &version1, const std::string &version2) {
     return 0;
 }
 
-/*nlohmann::json VersionLister(const nlohmann::json& jsonData, nlohmann::json& arrayData)
-{
-    for (const auto& item : jsonData.items()) {
-        arrayData.push_back(item.key());
+void urlSplit(const std::string &url, std::string &domain, std::string &path) {
+    std::string modifiedUrl = url;
+    if (modifiedUrl.find("https://" == 0)) {
+        modifiedUrl.erase(0, 8);
     }
 
-    // Print the version array
-    std::cout << "Version array elements:" << std::endl;
-    for (const auto& version : arrayData) {
-        std::cout << version << std::endl;
-    }
-    return arrayData;
-}*/
+    size_t firstSlashPos = modifiedUrl.find('/');
+
+    domain = modifiedUrl.substr(0, firstSlashPos);
+    path = modifiedUrl.substr(firstSlashPos);
+}
 
 // Function to retrieve the version of a program
 std::string GetProgramVersion() {
@@ -542,4 +602,44 @@ std::string GetProgramVersion() {
     }
 
     return "";
+}
+
+// Convert std::string to wstring
+std::wstring s2ws(const std::string &s) {
+    int len;
+    int slength = (int)s.length() + 1;
+    len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, 0, 0);
+    std::wstring buf;
+    buf.resize(len);
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, const_cast<wchar_t *>(buf.c_str()), len);
+    return buf;
+}
+
+bool matchFileRegex(const std::string &input, const std::regex &pattern) {
+    if (std::regex_match(input, pattern)) {
+        std::cout << "Valid file name " << input << std::endl;
+        return true;
+    }
+    else {
+        std::cout << "Invalid file name" << std::endl;
+        return false;
+    }
+}
+
+bool checkandCreateDirectory(std::string path) {
+    DWORD attributes = GetFileAttributes(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || ! (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        if (CreateDirectory(path.c_str(), NULL)) {
+            std::cout << "Directory created: " << path << std::endl;
+            return true;
+        }
+        else {
+            std::cerr << "Failed to create directory: " << path << std::endl;
+            return false;
+        }
+    }
+    else {
+        std::cout << "Directory already exists: " << path << std::endl;
+        return true;
+    }
 }
