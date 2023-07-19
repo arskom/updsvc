@@ -34,7 +34,6 @@ VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
-static LPCWSTR wStringCreator(std::string s);
 static bool matchFileRegex(const std::string &input, const std::regex &pattern);
 
 /**
@@ -347,29 +346,37 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     std::stringstream sstr;
     std::ofstream ostr;
 
-    // Convert string to LPWSTR for WinHttpConnect and WinHttpOpenRequest function
-    LPCWSTR wdomain = wStringCreator(domain);
-    LPCWSTR wpath = wStringCreator(path);
+    // Get wsting convert it to LPWSTR for WinHttpConnect and WinHttpOpenRequest function
+    std::wstring wdomain = s2ws(domain);
+    std::wstring wpath = s2ws(path);
+    LPCWSTR lpcwstrDomain = wdomain.c_str();
+    LPCWSTR lpcwstrPath = wpath.c_str();
 
     // Get file name from path
     std::size_t lastSlashPos = path.find_last_of("/");
     std::string filename = path.substr(lastSlashPos + 1);
 
-    // Control if file name is valid
-    std::regex acceptedRegex;
-    if (! (matchFileRegex(filename, acceptedRegex))) {
-        std::cerr << "Invalid file, this file cannot be downloaded" << std::endl;
-    }
-
-    // Get path of default location for temporary files (%userprofile%\AppData\Local\Temp)
-    const char *tempDir = std::getenv("TEMP");
-    if (tempDir == nullptr) {
-        std::cerr << "Failed to retrieve the temporary directory path." << std::endl;
-        return "";
-    }
-    // Open file at %userprofile%\AppData\Local\Temp
     if (file) {
-        std::string tempFilePath = std::string(tempDir) + "\\" + filename;
+        // Control if file name is valid
+        std::regex acceptedRegex("^[A-Za-z0-9\\-._]+$");
+        if (! (matchFileRegex(filename, acceptedRegex))) {
+            std::cerr << "Invalid file, this file cannot be downloaded" << std::endl;
+            return "";
+        }
+
+        // Get path of default location for temporary files (%userprofile%\AppData\Local\Temp)
+        const char *tempDir = std::getenv("TEMP");
+        if (tempDir == nullptr) {
+            std::cerr << "Failed to retrieve the temporary directory path." << std::endl;
+            return "";
+        }
+
+        // Open file at %userprofile%\AppData\Local\Temp
+        std::string tempFilePath = std::string(tempDir) + "\\updsvc";
+        if (! checkandCreateDirectory(tempFilePath)) {
+            tempFilePath = std::string(tempDir) + "\\" + filename;
+        }
+        tempFilePath = std::string(tempDir) + "\\updsvc\\" + filename;
         ostr.open(tempFilePath, std::ios::trunc | std::ios::binary);
         if (! ostr.is_open()) {
             std::cerr << "Failed to open file." << std::endl;
@@ -386,12 +393,12 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
 
     // Specify an HTTP server.
     if (hSession) {
-        hConnect = WinHttpConnect(hSession, wdomain, INTERNET_DEFAULT_PORT, 0);
+        hConnect = WinHttpConnect(hSession, lpcwstrDomain, INTERNET_DEFAULT_PORT, 0);
     }
     // Create an HTTP Request handle.
     if (hConnect) {
-        hRequest = WinHttpOpenRequest(
-                hConnect, L"GET", wpath, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+        hRequest = WinHttpOpenRequest(hConnect, L"GET", lpcwstrPath, NULL, WINHTTP_NO_REFERER,
+                WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
     }
     // Send a Request.
     if (hRequest) {
@@ -597,10 +604,15 @@ std::string GetProgramVersion() {
     return "";
 }
 
-LPCWSTR wStringCreator(std::string s) {
-    std::wstring temp = std::wstring(s.begin(), s.end());
-    LPCWSTR wideString = temp.c_str();
-    return wideString;
+// Convert std::string to wstring
+std::wstring s2ws(const std::string &s) {
+    int len;
+    int slength = (int)s.length() + 1;
+    len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, 0, 0);
+    std::wstring buf;
+    buf.resize(len);
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, const_cast<wchar_t *>(buf.c_str()), len);
+    return buf;
 }
 
 bool matchFileRegex(const std::string &input, const std::regex &pattern) {
@@ -611,5 +623,23 @@ bool matchFileRegex(const std::string &input, const std::regex &pattern) {
     else {
         std::cout << "Invalid file name" << std::endl;
         return false;
+    }
+}
+
+bool checkandCreateDirectory(std::string path) {
+    DWORD attributes = GetFileAttributes(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || ! (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        if (CreateDirectory(path.c_str(), NULL)) {
+            std::cout << "Directory created: " << path << std::endl;
+            return true;
+        }
+        else {
+            std::cerr << "Failed to create directory: " << path << std::endl;
+            return false;
+        }
+    }
+    else {
+        std::cout << "Directory already exists: " << path << std::endl;
+        return true;
     }
 }
