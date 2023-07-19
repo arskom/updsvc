@@ -623,6 +623,19 @@ std::wstring GetProgramVersion() {
     return {};
 }
 
+std::wstring GetProgramPath() {
+    wchar_t versionBuffer[1024];
+    DWORD bufferSize = sizeof(versionBuffer);
+
+    // Use MsiGetProductInfo for get the version
+    UINT result = MsiGetProductInfo(uid, INSTALLPROPERTY_INSTALLSOURCE, versionBuffer, &bufferSize);
+    if (result == ERROR_SUCCESS) {
+        return std::wstring(versionBuffer, versionBuffer + bufferSize);
+    }
+
+    return {};
+}
+
 // Convert std::string to wstring
 std::wstring s2ws(std::string_view s) {
     int len;

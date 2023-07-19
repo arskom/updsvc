@@ -33,5 +33,6 @@ std::string ws2s(std::wstring_view s);
 inline std::string ws2s(const std::wstring &s) {
     return ws2s(std::wstring_view{s});
 }
+std::wstring GetProgramPath();
 
 #endif // SVC_H
