@@ -19,6 +19,7 @@ add_custom_command(
 )
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+add_compile_definitions(UNICODE _UNICODE)
 
 # updsvc
 add_executable(updsvc     UpdSvc.res Svc.cpp)

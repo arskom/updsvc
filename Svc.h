@@ -19,12 +19,19 @@ struct Buffer {
     }
 };
 
-std::string CreateRequest(bool file, std::string &domain, std::string &path);
-std::string GetProgramVersion();
-std::string UpdateDetector(std::string sstr);
-int compareVersions(const std::string &version1, const std::string &version2);
-void urlSplit(const std::string &url, std::string &domain, std::string &path);
-bool checkandCreateDirectory(std::string path);
-std::wstring s2ws(const std::string &s);
+std::string CreateRequest(bool file, const std::wstring &domain, const std::wstring &path);
+std::wstring GetProgramVersion();
+std::wstring UpdateDetector(const std::string &sstr);
+int compareVersions(const std::string &version1, const std::wstring &version2);
+void urlSplit(const std::wstring &url, std::wstring &domain, std::wstring &path);
+bool checkandCreateDirectory(std::wstring path);
+std::wstring s2ws(std::string_view s);
+inline std::wstring s2ws(const std::string &s) {
+    return s2ws(std::string_view{s});
+}
+std::string ws2s(std::wstring_view s);
+inline std::string ws2s(const std::wstring &s) {
+    return ws2s(std::wstring_view{s});
+}
 
 #endif // SVC_H

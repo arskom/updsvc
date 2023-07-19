@@ -34,7 +34,7 @@ VOID SvcInit(DWORD, LPTSTR *);
 VOID SvcReportEvent(LPTSTR);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
-static bool matchFileRegex(const std::string &input, const std::regex &pattern);
+static bool matchFileRegex(const std::wstring &input, const std::wregex &pattern);
 
 /**
  * @brief Entry point for the process
@@ -338,49 +338,52 @@ VOID SvcReportEvent(LPTSTR szFunction) {
     }
 }
 
-std::string CreateRequest(bool file, std::string &domain, std::string &path) {
+std::string CreateRequest(bool file, const std::wstring &domain, const std::wstring &path) {
     DWORD dwSize = 0;
     DWORD dwDownloaded = 0;
-    LPSTR pszOutBuffer;
 
     std::stringstream sstr;
     std::ofstream ostr;
 
-    // Get wsting convert it to LPWSTR for WinHttpConnect and WinHttpOpenRequest function
-    std::wstring wdomain = s2ws(domain);
-    std::wstring wpath = s2ws(path);
-    LPCWSTR lpcwstrDomain = wdomain.c_str();
-    LPCWSTR lpcwstrPath = wpath.c_str();
+    LPCWSTR lpcwstrDomain = domain.c_str();
+    LPCWSTR lpcwstrPath = path.c_str();
 
     // Get file name from path
-    std::size_t lastSlashPos = path.find_last_of("/");
-    std::string filename = path.substr(lastSlashPos + 1);
+    std::size_t lastSlashPos = path.find_last_of(L"/");
+    auto filename = path.substr(lastSlashPos + 1);
 
     if (file) {
         // Control if file name is valid
-        std::regex acceptedRegex("^[A-Za-z0-9\\-._]+$");
+        std::wregex acceptedRegex(L"^[A-Za-z0-9._-]+$");
         if (! (matchFileRegex(filename, acceptedRegex))) {
-            std::cerr << "Invalid file, this file cannot be downloaded" << std::endl;
-            return "";
+            std::wcerr << "Invalid file, this file cannot be downloaded" << std::endl;
+            return {};
         }
 
         // Get path of default location for temporary files (%userprofile%\AppData\Local\Temp)
-        const char *tempDir = std::getenv("TEMP");
-        if (tempDir == nullptr) {
-            std::cerr << "Failed to retrieve the temporary directory path." << std::endl;
-            return "";
+
+        std::wstring tempDir;
+        if (auto ret = std::getenv("TEMP"); (! ret)) {
+            return {};
+        }
+        else {
+            tempDir = s2ws(std::string_view{ret});
+        }
+        if (tempDir.empty()) {
+            std::wcerr << "Failed to retrieve the temporary directory path." << std::endl;
+            return {};
         }
 
         // Open file at %userprofile%\AppData\Local\Temp
-        std::string tempFilePath = std::string(tempDir) + "\\updsvc";
+        auto tempFilePath = std::wstring(tempDir) + L"\\updsvc";
         if (! checkandCreateDirectory(tempFilePath)) {
-            tempFilePath = std::string(tempDir) + "\\" + filename;
+            tempFilePath = std::wstring(tempDir) + L"\\" + filename;
         }
-        tempFilePath = std::string(tempDir) + "\\updsvc\\" + filename;
+        tempFilePath = std::wstring(tempDir) + L"\\updsvc\\" + filename;
         ostr.open(tempFilePath, std::ios::trunc | std::ios::binary);
         if (! ostr.is_open()) {
-            std::cerr << "Failed to open file." << std::endl;
-            return "";
+            std::wcerr << "Failed to open file." << std::endl;
+            return {};
         }
     }
 
@@ -404,7 +407,7 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     if (hRequest) {
         bResults = WinHttpSendRequest(
                 hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-        SvcReportEvent("request sent");
+        SvcReportEvent(L"request sent");
     }
 
     // End the request.
@@ -428,7 +431,7 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
             }
 
             // Allocate space for the buffer.
-            pszOutBuffer = new char[dwSize + 1];
+            auto pszOutBuffer = new char[dwSize + 1];
             if (! pszOutBuffer) {
                 printf("Out of memory\n");
                 break;
@@ -439,7 +442,7 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
 
             if (! WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {
                 printf("Error %u in WinHttpReadData.\n", GetLastError());
-                SvcReportEvent("failed to read");
+                SvcReportEvent(L"failed to read");
                 break;
             }
 
@@ -451,7 +454,7 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
                 sstr << std::string_view(pszOutBuffer, dwSize);
             }
             delete[] pszOutBuffer;
-            SvcReportEvent("data read");
+            SvcReportEvent(L"data read");
 
             // This condition should never be reached since WinHttpQueryDataAvailable
             // reported that there are bits to read.
@@ -478,35 +481,37 @@ std::string CreateRequest(bool file, std::string &domain, std::string &path) {
     }
     if (file) {
         ostr.close();
-        return filename;
+        return ws2s(filename);
     }
     else {
         return sstr.str();
     }
 }
 
-std::string UpdateDetector(std::string sstr) {
+std::wstring UpdateDetector(const std::string &str) {
     using json = nlohmann::json;
     json j_complete;
-    std::string version = GetProgramVersion();
+    const auto wversion = GetProgramVersion();
+    const auto version = ws2s(wversion);
 
     try {
         // parsing input with a syntax error
-        j_complete = json::parse(sstr);
+        j_complete = json::parse(str);
     }
     catch (json::parse_error &e) {
         // output exception information
-        std::cout << "message: " << e.what() << '\n'
-                  << "exception id: " << e.id << '\n'
-                  << "byte position of error: " << e.byte << std::endl;
-        return "";
+        std::wcout << "message: " << e.what() << '\n'
+                   << "exception id: " << e.id << '\n'
+                   << "byte position of error: " << e.byte << std::endl;
+        return {};
     }
 
     const auto &windows = j_complete["mgui-wgt"]["exe"];
 
     for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
+        std::string key = it.key();
         // check whether current version is smaller than the version at hand
-        if (compareVersions(it.key(), version) != 1) {
+        if (compareVersions(it.key(), wversion) != 1) {
             std::cout << "Version " << it.key() << " skipped" << std::endl;
             continue;
         }
@@ -517,7 +522,7 @@ std::string UpdateDetector(std::string sstr) {
                 const auto &url = jt.value()["url"];
                 std::cout << "Patch update from " << jt.key() << " to " << it.key()
                           << " url: " << url << std::endl;
-                return url;
+                return s2ws(std::string_view(url));
             }
         }
 
@@ -525,14 +530,14 @@ std::string UpdateDetector(std::string sstr) {
             const auto &url = val["null"]["url"];
             std::cout << "Full update from " << version << " to " << it.key() << " url: " << url
                       << std::endl;
-            return url;
+            return s2ws(std::string_view(url));
         }
 
         std::cout << "Package version " << it.key() << " channel " << val["null"]["channel"]
                   << " was skipped" << std::endl;
     }
 
-    return "";
+    return {};
 }
 
 std::vector<int> splitString(const std::string &str, char delimiter) {
@@ -545,8 +550,18 @@ std::vector<int> splitString(const std::string &str, char delimiter) {
     }
     return nums;
 }
+std::vector<int> splitString(const std::wstring &str, wchar_t delimiter) {
+    std::vector<int> nums;
+    std::wstringstream ss(str);
+    std::wstring num;
 
-int compareVersions(const std::string &version1, const std::string &version2) {
+    while (std::getline(ss, num, delimiter)) {
+        nums.push_back(std::stoi(num));
+    }
+    return nums;
+}
+
+int compareVersions(const std::string &version1, const std::wstring &version2) {
     std::vector<int> v1 = splitString(version1, '.');
     std::vector<int> v2 = splitString(version2, '.');
 
@@ -578,68 +593,82 @@ int compareVersions(const std::string &version1, const std::string &version2) {
     return 0;
 }
 
-void urlSplit(const std::string &url, std::string &domain, std::string &path) {
-    std::string modifiedUrl = url;
+void urlSplit(const std::wstring &url, std::wstring &domain, std::wstring &path) {
+    auto modifiedUrl = url;
     if (modifiedUrl.find("https://" == 0)) {
         modifiedUrl.erase(0, 8);
     }
 
-    size_t firstSlashPos = modifiedUrl.find('/');
+    size_t firstSlashPos = modifiedUrl.find(wchar_t{'/'});
+
+    if (firstSlashPos == std::wstring::npos) {
+        return;
+    }
 
     domain = modifiedUrl.substr(0, firstSlashPos);
     path = modifiedUrl.substr(firstSlashPos);
 }
 
 // Function to retrieve the version of a program
-std::string GetProgramVersion() {
-    char versionBuffer[256];
+std::wstring GetProgramVersion() {
+    wchar_t versionBuffer[256];
     DWORD bufferSize = sizeof(versionBuffer);
 
     // Use MsiGetProductInfo for get the version
     UINT result = MsiGetProductInfo(uid, INSTALLPROPERTY_VERSIONSTRING, versionBuffer, &bufferSize);
     if (result == ERROR_SUCCESS) {
-        return std::string(versionBuffer);
+        return std::wstring(versionBuffer);
     }
 
-    return "";
+    return {};
 }
 
 // Convert std::string to wstring
-std::wstring s2ws(const std::string &s) {
+std::wstring s2ws(std::string_view s) {
     int len;
-    int slength = (int)s.length() + 1;
-    len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, 0, 0);
+    int slength = (int)s.length();
+    len = MultiByteToWideChar(CP_UTF8, 0, s.data(), slength, 0, 0);
     std::wstring buf;
     buf.resize(len);
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, const_cast<wchar_t *>(buf.c_str()), len);
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), slength, const_cast<wchar_t *>(buf.c_str()), len);
+    return buf;
+}
+// Convert std::string to wstring
+std::string ws2s(std::wstring_view s) {
+    int len;
+    int slength = (int)s.length();
+    len = WideCharToMultiByte(CP_UTF8, 0, s.data(), slength, 0, 0, 0, 0);
+    std::string buf;
+    buf.resize(len);
+    WideCharToMultiByte(CP_UTF8, 0, s.data(), slength, const_cast<char *>(buf.data()), len, 0, 0);
     return buf;
 }
 
-bool matchFileRegex(const std::string &input, const std::regex &pattern) {
+bool matchFileRegex(const std::wstring &input, const std::wregex &pattern) {
     if (std::regex_match(input, pattern)) {
-        std::cout << "Valid file name " << input << std::endl;
+        std::wcout << "Valid file name " << input << std::endl;
         return true;
     }
     else {
-        std::cout << "Invalid file name" << std::endl;
+        std::wcout << "Invalid file name" << std::endl;
         return false;
     }
 }
 
-bool checkandCreateDirectory(std::string path) {
+bool checkandCreateDirectory(std::wstring path) {
     DWORD attributes = GetFileAttributes(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES || ! (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-        if (CreateDirectory(path.c_str(), NULL)) {
-            std::cout << "Directory created: " << path << std::endl;
+        if (CreateDirectory(path.data(), NULL)) {
+            std::wcout << "Directory created: " << path << std::endl;
             return true;
         }
         else {
-            std::cerr << "Failed to create directory: " << path << std::endl;
+            std::wcerr << "Failed to create directory: " << path << std::endl;
             return false;
         }
     }
     else {
-        std::cout << "Directory already exists: " << path << std::endl;
+        std::wcout << "Directory already exists: " << path << std::endl;
         return true;
     }
 }
