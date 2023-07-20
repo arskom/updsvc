@@ -1,7 +1,6 @@
 #ifndef SVC_H
 #define SVC_H
 
-#include "json.hpp"
 #include <Windows.h>
 #include <sstream>
 
@@ -33,7 +32,7 @@ std::string ws2s(std::wstring_view s);
 inline std::string ws2s(const std::wstring &s) {
     return ws2s(std::wstring_view{s});
 }
-std::wstring GetProgramPath();
+std::wstring GetSourcePath();
 bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defaultdir);
-
+std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath);
 #endif // SVC_H
