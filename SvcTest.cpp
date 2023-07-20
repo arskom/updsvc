@@ -19,5 +19,7 @@ int main(int argc, char *argv[]) {
         std::wcerr << "Reading MSI failed" << std::endl;
     }
 
+    // GetMSIProperty(fullpath, directoryParent.c_str());
+    //  std::wcout << propertyName << std::endl;
     return 0;
 }

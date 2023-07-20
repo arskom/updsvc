@@ -797,3 +797,24 @@ bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defa
     MsiCloseHandle(hDatabase);
     return true;
 }
+
+// FIXME
+/*std::wstring GetMSIProperty(const std::wstring &msiFilePath, const std::wstring &propertyName) {
+    MSIHANDLE hMsi = 0;
+    UINT result = MsiOpenDatabase(msiFilePath.c_str(), MSIDBOPEN_READONLY, &hMsi);
+    if (result != ERROR_SUCCESS) {
+        std::wcerr << L"Failed to open the MSI database." << std::endl;
+        return L"";
+    }
+    wchar_t propertyValue[1024];
+    DWORD bufferSize = sizeof(propertyValue);
+    result = MsiGetProperty(hMsi, propertyName.c_str(), propertyValue, &bufferSize);
+    if (result != ERROR_SUCCESS) {
+        std::wcerr << L"Failed to retrieve property value." << std::endl;
+        MsiCloseHandle(hMsi);
+        return L"";
+    }
+
+    MsiCloseHandle(hMsi);
+    return propertyValue;
+}*/

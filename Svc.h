@@ -35,4 +35,5 @@ inline std::string ws2s(const std::wstring &s) {
 std::wstring GetSourcePath();
 bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defaultdir);
 std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath);
+std::wstring GetMSIProperty(const std::wstring &msiFilePath, const std::wstring &propertyName);
 #endif // SVC_H
