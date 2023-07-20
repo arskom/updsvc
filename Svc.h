@@ -34,5 +34,6 @@ inline std::string ws2s(const std::wstring &s) {
     return ws2s(std::wstring_view{s});
 }
 std::wstring GetProgramPath();
+bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defaultdir);
 
 #endif // SVC_H
