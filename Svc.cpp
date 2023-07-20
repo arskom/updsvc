@@ -15,6 +15,7 @@
 #include <sstream>
 
 #include <Msi.h>
+#include <msiquery.h>
 
 #include <regex>
 
@@ -104,7 +105,7 @@ VOID SvcInstall() {
             SC_MANAGER_ALL_ACCESS); // full access rights
 
     if (NULL == schSCManager) {
-        printf("OpenSCManager failed (%d)\n", GetLastError());
+        printf("OpenSCManager failed (%lu)\n", GetLastError());
         return;
     }
 
@@ -421,7 +422,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
             // Check for available data.
             dwSize = 0;
             if (! WinHttpQueryDataAvailable(hRequest, &dwSize)) {
-                printf("Error %u in WinHttpQueryDataAvailable.\n", GetLastError());
+                printf("Error %lu in WinHttpQueryDataAvailable.\n", GetLastError());
                 break;
             }
 
@@ -441,7 +442,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
             ZeroMemory(pszOutBuffer, dwSize + 1);
 
             if (! WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {
-                printf("Error %u in WinHttpReadData.\n", GetLastError());
+                printf("Error %lu in WinHttpReadData.\n", GetLastError());
                 SvcReportEvent(L"failed to read");
                 break;
             }
@@ -627,13 +628,20 @@ std::wstring GetProgramPath() {
     wchar_t versionBuffer[1024];
     DWORD bufferSize = sizeof(versionBuffer);
 
-    // Use MsiGetProductInfo for get the version
+    // Use MsiGetProductInfo for get the source path
     UINT result = MsiGetProductInfo(uid, INSTALLPROPERTY_INSTALLSOURCE, versionBuffer, &bufferSize);
     if (result == ERROR_SUCCESS) {
-        return std::wstring(versionBuffer, versionBuffer + bufferSize);
+        return std::wstring(versionBuffer);
     }
 
     return {};
+}
+
+std::wstring GetPath() {
+    wchar_t versionBuffer[1024];
+    DWORD bufferSize = sizeof(versionBuffer);
+    MsiGetComponentPath(uid, cid, versionBuffer, &bufferSize);
+    return std::wstring(versionBuffer);
 }
 
 // Convert std::string to wstring
@@ -684,4 +692,60 @@ bool checkandCreateDirectory(std::wstring path) {
         std::wcout << "Directory already exists: " << path << std::endl;
         return true;
     }
+}
+
+bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defaultdir) {
+
+    // Open the MSI package
+    MSIHANDLE hDatabase = 0;
+    if (MsiOpenDatabase(msiPath, MSIDBOPEN_READONLY, &hDatabase) != ERROR_SUCCESS) {
+        std::wcerr << "Open MSI package failed" << std::endl;
+        return false;
+    }
+
+    // Prepare the query to fetch all files from the MSI package
+    PMSIHANDLE hView = 0;
+    if (MsiDatabaseOpenView(hDatabase,
+                L"SELECT `Directory_Parent`, `DefaultDir` FROM `Directory` WHERE "
+                L"`Directory`='INSTALLDIR'",
+                &hView)
+            != ERROR_SUCCESS) {
+        MsiCloseHandle(hDatabase);
+        std::wcerr << "Error preparing query" << std::endl;
+        return false;
+    }
+
+    // Execute the query
+    if (MsiViewExecute(hView, 0) != ERROR_SUCCESS) {
+        MsiCloseHandle(hDatabase);
+        std::wcerr << "Execute query failed" << std::endl;
+        return false;
+    }
+
+    wchar_t dirparentBuffer[1024];
+    wchar_t defaultdirBuffer[1024];
+
+    DWORD dirparentBufferSize = sizeof(dirparentBuffer);
+    DWORD defaultdirBufferSize = sizeof(defaultdirBuffer);
+
+    // Fetch and extract each file from the MSI package
+    PMSIHANDLE hRecord = 0;
+    while (MsiViewFetch(hView, &hRecord) == ERROR_SUCCESS) {
+
+        // Get the information from the record
+        if (MsiRecordGetString(hRecord, 1, dirparentBuffer, &dirparentBufferSize) != ERROR_SUCCESS
+                || MsiRecordGetString(hRecord, 2, defaultdirBuffer, &defaultdirBufferSize)
+                        != ERROR_SUCCESS) {
+            std::wcerr << "MsiGetString failed" << std::endl;
+            return false;
+        }
+    }
+
+    // Write information to wstring
+    dirparent = dirparentBuffer;
+    defaultdir = defaultdirBuffer;
+
+    MsiCloseHandle(hView);
+    MsiCloseHandle(hDatabase);
+    return true;
 }
