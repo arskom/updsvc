@@ -637,13 +637,6 @@ std::wstring GetProgramPath() {
     return {};
 }
 
-std::wstring GetPath() {
-    wchar_t versionBuffer[1024];
-    DWORD bufferSize = sizeof(versionBuffer);
-    MsiGetComponentPath(uid, cid, versionBuffer, &bufferSize);
-    return std::wstring(versionBuffer);
-}
-
 // Convert std::string to wstring
 std::wstring s2ws(std::string_view s) {
     int len;
