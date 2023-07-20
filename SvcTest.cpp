@@ -4,27 +4,21 @@
 
 int main(int argc, char *argv[]) {
 
-    std::wstring domain0, domain1, path0, path1, url;
-    domain0 = L"ampmail.net";
-    path0 = L"/release/files.json";
-    auto data = CreateRequest(0, domain0, path0);
-    url = UpdateDetector(data);
-    urlSplit(url, domain1, path1);
-    auto filename = CreateRequest(1, domain1, path1);
-    std::cout << "filename: " << filename << std::endl;
-    auto version = GetProgramVersion();
-    std::wcout << "version: " << version << std::endl;
+    const wchar_t *msiPath =
+            L"C:\\ProgramData\\Package "
+            L"Cache\\{028818E2-5DF4-414F-A1E4-2AA542DE4697}v4.1.92\\mgui-wgt-4-x64.msi";
+    std::wstring directoryParent, defaultDir;
+    if (ReadMSI(msiPath, directoryParent, defaultDir)) {
+        // Extraction successful
+        // Now you can use directoryParent and defaultDir as needed
+        // For example, you can print their values:
+        wprintf(L"Directory_Parent: %s\n", directoryParent.c_str());
+        wprintf(L"DefaultDir: %s\n", defaultDir.c_str());
+    }
+    else {
+        // Reading failed
+        std::wcerr << "Reading MSI failed" << std::endl;
+    }
 
-    auto path = GetProgramVersion();
-    std::wcout << "path: " << path << std::endl;
-    /*std::wstring url =
-            L"https://ampmail.net/release/mgui-wgt/mgui-wgt-4.1.93-x64_mgui-wgt-4.1.92-x64.exe";
-    std::wstring domain, path;
-    urlSplit(url, domain, path);
-    std::wcout << "domain: " << domain << std::endl;
-    std::wcout << "path: " << path << std::endl;
-    std::size_t lastSlashPos = path.find_last_of(L"/");
-    auto filename = path.substr(lastSlashPos + 1);
-    std::wcout << "filename: " << filename << std::endl;*/
     return 0;
 }
