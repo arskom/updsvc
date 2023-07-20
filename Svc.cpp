@@ -19,6 +19,8 @@
 
 #include <regex>
 
+#include <filesystem>
+
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
 
 #define SVCNAME TEXT("UpdSvc")
@@ -624,7 +626,7 @@ std::wstring GetProgramVersion() {
     return {};
 }
 
-std::wstring GetProgramPath() {
+std::wstring GetSourcePath() {
     wchar_t versionBuffer[1024];
     DWORD bufferSize = sizeof(versionBuffer);
 
@@ -635,6 +637,59 @@ std::wstring GetProgramPath() {
     }
 
     return {};
+}
+
+/*std::wstring GetSourceFilePath() {
+    std::filesystem::path path = GetSourcePath();
+    std::wstring filename, fullPath;
+    if (std::filesystem::is_directory(path) && std::filesystem::exists(path)) {
+        // Get the first file entry in the directory
+        std::filesystem::directory_entry entry(path);
+
+        if (entry.path().extension() == ".msi") {
+            std::wcout << GetSourcePath() + filename << std::endl;
+            return GetSourcePath() + filename;
+        }
+        else {
+            std::wcerr << "No file found in the directory." << std::endl;
+        }
+    }
+    else {
+        std::wcerr << "The given path is not a directory or does not exist." << std::endl;
+    }
+}*/
+
+std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath) {
+    DWORD fileAttributes = GetFileAttributes(directoryPath.c_str());
+    if (fileAttributes != INVALID_FILE_ATTRIBUTES && (fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        WIN32_FIND_DATA findFileData;
+        HANDLE hFind = FindFirstFile((directoryPath + L"*").c_str(), &findFileData);
+
+        if (hFind == INVALID_HANDLE_VALUE) {
+            std::wcerr << L"Failed to find the first file." << std::endl;
+            return L"";
+        }
+
+        do {
+            if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                // Skip directories "." and ".."
+                if (wcscmp(findFileData.cFileName, L".") != 0
+                        && wcscmp(findFileData.cFileName, L"..") != 0) {
+                    // Handle subdirectories if needed
+                    // ...
+                }
+            }
+            else {
+                // Return the first file name
+                FindClose(hFind);
+                return findFileData.cFileName;
+            }
+        } while (FindNextFile(hFind, &findFileData) != 0);
+
+        FindClose(hFind);
+    }
+    // Return an empty string if the directory does not exist or contains no files.
+    return L"";
 }
 
 // Convert std::string to wstring
