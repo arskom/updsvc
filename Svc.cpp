@@ -3,6 +3,7 @@
 
 #include <strsafe.h>
 #include <tchar.h>
+#include <tlhelp32.h>
 
 #include <winhttp.h>
 
@@ -20,8 +21,11 @@
 #include <regex>
 
 #include <filesystem>
+#include <psapi.h>
+#include <winbase.h>
 
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
+#define cid TEXT("{C47649FA-E22C-473F-B156-0F06E3FC0E56}")
 
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
@@ -38,6 +42,7 @@ VOID SvcReportEvent(LPTSTR);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
 static bool matchFileRegex(const std::wstring &input, const std::wregex &pattern);
+static BOOL ListProcessModules(DWORD dwPID);
 
 /**
  * @brief Entry point for the process
@@ -798,23 +803,98 @@ bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defa
     return true;
 }
 
-// FIXME
-/*std::wstring GetMSIProperty(const std::wstring &msiFilePath, const std::wstring &propertyName) {
-    MSIHANDLE hMsi = 0;
-    UINT result = MsiOpenDatabase(msiFilePath.c_str(), MSIDBOPEN_READONLY, &hMsi);
-    if (result != ERROR_SUCCESS) {
-        std::wcerr << L"Failed to open the MSI database." << std::endl;
-        return L"";
-    }
-    wchar_t propertyValue[1024];
-    DWORD bufferSize = sizeof(propertyValue);
-    result = MsiGetProperty(hMsi, propertyName.c_str(), propertyValue, &bufferSize);
-    if (result != ERROR_SUCCESS) {
-        std::wcerr << L"Failed to retrieve property value." << std::endl;
-        MsiCloseHandle(hMsi);
-        return L"";
+std::wstring getpathofexe() {
+    wchar_t install[1024];
+    DWORD installsize = sizeof(install);
+    MsiGetComponentPath(uid, cid, install, &installsize);
+    std::wstring path = install;
+    return path;
+}
+
+int isRunning() {
+    HANDLE hProcessSnap;
+    PROCESSENTRY32 pe32;
+
+    // Take a snapshot of all processes in the system.
+    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE) {
+        std::wcerr << "Error taking snapshot of processes" << std::endl;
+        return -1;
     }
 
-    MsiCloseHandle(hMsi);
-    return propertyValue;
-}*/
+    // Set the size of the structure before using it.
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    // Retrieve information about the first process,
+    // and exit if unsuccessful
+    if (! Process32First(hProcessSnap, &pe32)) {
+        std::wcerr << "Cant retrieve information about firs process" << std::endl;
+        CloseHandle(hProcessSnap); // clean the snapshot object
+        return -1;
+    }
+
+    // Now walk the snapshot of processes, and
+    // compare programs name with all processes
+    do {
+        if (! (wcscmp(pe32.szExeFile, L"mgui-wgt.exe"))) {
+            std::wcout << "\nPROCESS NAME:" << pe32.szExeFile << std::endl;
+            auto programsituation = ListProcessModules(pe32.th32ProcessID);
+            if (programsituation == 1) {
+                return 1;
+            }
+            else if (programsituation == -1) {
+                return -1;
+            }
+        }
+
+    } while (Process32Next(hProcessSnap, &pe32));
+
+    CloseHandle(hProcessSnap);
+    return 0;
+}
+
+// Purpose:
+//   First we get list of current processes(in isRunning)
+//   If our exe's name is inside of it, calls this function
+//   Compare our path with exe files module to be sure its our program
+
+// if process gets an error
+//   function returns -1
+// if module of mgui-wgt contains our path
+//   function returns 1
+// if module of mgu-wgt dont contains our path
+//   function returns 0
+int ListProcessModules(DWORD dwPID) {
+    HANDLE hModuleSnap = INVALID_HANDLE_VALUE;
+    MODULEENTRY32 me32;
+
+    // Take a snapshot of all modules in the specified process.
+    hModuleSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, dwPID);
+    if (hModuleSnap == INVALID_HANDLE_VALUE) {
+        std::wcerr << "Create tool help error" << std::endl;
+        return -1;
+    }
+
+    // Set the size of the structure before using it.
+    me32.dwSize = sizeof(MODULEENTRY32);
+
+    // Retrieve information about the first module,
+    // and exit if unsuccessful
+    if (! Module32First(hModuleSnap, &me32)) {
+        std::wcerr << "Cant retrieve information about firs module" << std::endl;
+        CloseHandle(hModuleSnap); // clean the snapshot object
+        return -1;
+    }
+
+    // Now walk the module list of the process,
+    // and compare the paths with our path
+    do {
+        if (! (wcscmp(me32.szExePath, L"C:\\Users\\admin\\Desktop\\rozet\\mgui-wgt.exe"))) {
+            std::wcout << me32.szExePath << std::endl;
+            return 1;
+        }
+    } while (Module32Next(hModuleSnap, &me32));
+
+    CloseHandle(hModuleSnap);
+    return 0;
+}
