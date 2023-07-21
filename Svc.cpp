@@ -3,6 +3,7 @@
 
 #include <strsafe.h>
 #include <tchar.h>
+#include <thread>
 #include <tlhelp32.h>
 
 #include <winhttp.h>
@@ -94,7 +95,7 @@ VOID SvcInstall() {
     TCHAR szUnquotedPath[MAX_PATH];
 
     if (! GetModuleFileName(NULL, szUnquotedPath, MAX_PATH)) {
-        printf("Cannot install service (%d)\n", GetLastError());
+        printf("Cannot install service (%lu)\n", GetLastError());
         return;
     }
 
@@ -133,7 +134,7 @@ VOID SvcInstall() {
             NULL); // no password
 
     if (schService == NULL) {
-        printf("CreateService failed (%d)\n", GetLastError());
+        printf("CreateService failed (%lu)\n", GetLastError());
         CloseServiceHandle(schSCManager);
         return;
     }
@@ -747,7 +748,7 @@ bool checkandCreateDirectory(std::wstring path) {
     }
 }
 
-bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defaultdir) {
+/*bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defaultdir) {
 
     // Open the MSI package
     MSIHANDLE hDatabase = 0;
@@ -801,7 +802,7 @@ bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defa
     MsiCloseHandle(hView);
     MsiCloseHandle(hDatabase);
     return true;
-}
+}*/
 
 std::wstring getpathofexe() {
     wchar_t install[1024];
@@ -836,7 +837,7 @@ int isRunning() {
     // Now walk the snapshot of processes, and
     // compare programs name with all processes
     do {
-        if (! (wcscmp(pe32.szExeFile, L"mgui-wgt.exe"))) {
+        if (! (wcscmp(pe32.szExeFile, L"mgui-wgt.exe"))) { // TODO get name of exe dynamically
             std::wcout << "\nPROCESS NAME:" << pe32.szExeFile << std::endl;
             auto programsituation = ListProcessModules(pe32.th32ProcessID);
             if (programsituation == 1) {
@@ -860,9 +861,9 @@ int isRunning() {
 
 // if process gets an error
 //   function returns -1
-// if module of mgui-wgt contains our path
+// if module of mgui-wgt.exe contains our path
 //   function returns 1
-// if module of mgu-wgt dont contains our path
+// if module of mgu-wgt.exe dont contains our path
 //   function returns 0
 int ListProcessModules(DWORD dwPID) {
     HANDLE hModuleSnap = INVALID_HANDLE_VALUE;
@@ -889,7 +890,7 @@ int ListProcessModules(DWORD dwPID) {
     // Now walk the module list of the process,
     // and compare the paths with our path
     do {
-        if (! (wcscmp(me32.szExePath, L"C:\\Users\\admin\\Desktop\\rozet\\mgui-wgt.exe"))) {
+        if (! (wcscmp(me32.szExePath, getpathofexe().c_str()))) {
             std::wcout << me32.szExePath << std::endl;
             return 1;
         }
@@ -897,4 +898,18 @@ int ListProcessModules(DWORD dwPID) {
 
     CloseHandle(hModuleSnap);
     return 0;
+}
+
+void Update() {
+    auto a = isRunning();
+    if (a == -1) {
+        std::wcerr << "Error at getting process list cant update" << std::endl;
+        return;
+    }
+    while (a == 1) {
+        a = isRunning();
+        std::wcerr << "Program is running cant update" << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+    }
+    std::wcout << "Program is closed update can start" << std::endl;
 }

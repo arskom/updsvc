@@ -37,5 +37,6 @@ bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defa
 std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath);
 std::wstring GetMSIProperty(const std::wstring &msiFilePath, const std::wstring &propertyName);
 int isRunning();
+void Update();
 
 #endif // SVC_H
