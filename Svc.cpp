@@ -25,8 +25,9 @@
 #include <psapi.h>
 #include <winbase.h>
 
+#include <processthreadsapi.h>
+
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
-#define cid TEXT("{C47649FA-E22C-473F-B156-0F06E3FC0E56}")
 
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
@@ -43,7 +44,10 @@ VOID SvcReportEvent(LPTSTR);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
 static bool matchFileRegex(const std::wstring &input, const std::wregex &pattern);
-static BOOL ListProcessModules(DWORD dwPID);
+
+std::wstring getPathofComponent(wchar_t componentid[256]);
+int ListProcessModules(DWORD dwPID);
+bool isexe(std::wstring s);
 
 /**
  * @brief Entry point for the process
@@ -748,68 +752,73 @@ bool checkandCreateDirectory(std::wstring path) {
     }
 }
 
-/*bool ReadMSI(const wchar_t *msiPath, std::wstring &dirparent, std::wstring &defaultdir) {
+std::wstring ReadMSI(const wchar_t *msiPath) {
 
     // Open the MSI package
     MSIHANDLE hDatabase = 0;
     if (MsiOpenDatabase(msiPath, MSIDBOPEN_READONLY, &hDatabase) != ERROR_SUCCESS) {
         std::wcerr << "Open MSI package failed" << std::endl;
-        return false;
+        return L"";
     }
 
     // Prepare the query to fetch all files from the MSI package
     PMSIHANDLE hView = 0;
-    if (MsiDatabaseOpenView(hDatabase,
-                L"SELECT `Directory_Parent`, `DefaultDir` FROM `Directory` WHERE "
-                L"`Directory`='INSTALLDIR'",
-                &hView)
+    if (MsiDatabaseOpenView(hDatabase, L"SELECT ComponentId FROM Component", &hView)
             != ERROR_SUCCESS) {
         MsiCloseHandle(hDatabase);
         std::wcerr << "Error preparing query" << std::endl;
-        return false;
+        return L"";
     }
 
     // Execute the query
     if (MsiViewExecute(hView, 0) != ERROR_SUCCESS) {
         MsiCloseHandle(hDatabase);
         std::wcerr << "Execute query failed" << std::endl;
-        return false;
+        return L"";
     }
 
-    wchar_t dirparentBuffer[1024];
-    wchar_t defaultdirBuffer[1024];
-
-    DWORD dirparentBufferSize = sizeof(dirparentBuffer);
-    DWORD defaultdirBufferSize = sizeof(defaultdirBuffer);
+    wchar_t componentId[1024];
+    DWORD dirparentBufferSize = sizeof(componentId) / sizeof(wchar_t);
+    std::wstring path;
 
     // Fetch and extract each file from the MSI package
     PMSIHANDLE hRecord = 0;
+
     while (MsiViewFetch(hView, &hRecord) == ERROR_SUCCESS) {
+        UINT res = MsiRecordGetString(hRecord, 1, componentId, &dirparentBufferSize);
+
+        if (res != ERROR_SUCCESS) {
+            std::wcerr << "Read data failed" << std::endl;
+            return L"";
+        }
 
         // Get the information from the record
-        if (MsiRecordGetString(hRecord, 1, dirparentBuffer, &dirparentBufferSize) != ERROR_SUCCESS
-                || MsiRecordGetString(hRecord, 2, defaultdirBuffer, &defaultdirBufferSize)
-                        != ERROR_SUCCESS) {
-            std::wcerr << "MsiGetString failed" << std::endl;
-            return false;
+        path = getPathofComponent(componentId);
+        // std::wcout << path << std::endl;
+        if (isexe(path)) {
+            std::wcout << path << std::endl;
+            return path;
         }
+        dirparentBufferSize = sizeof(componentId) / sizeof(wchar_t);
     }
 
-    // Write information to wstring
-    dirparent = dirparentBuffer;
-    defaultdir = defaultdirBuffer;
-
+    MsiCloseHandle(hRecord);
     MsiCloseHandle(hView);
     MsiCloseHandle(hDatabase);
-    return true;
-}*/
+    return L"";
+}
 
-std::wstring getpathofexe() {
+std::wstring getPathofComponent(wchar_t componentid[256]) {
     wchar_t install[1024];
     DWORD installsize = sizeof(install);
-    MsiGetComponentPath(uid, cid, install, &installsize);
+    MsiGetComponentPath(uid, componentid, install, &installsize);
     std::wstring path = install;
     return path;
+}
+
+bool isexe(std::wstring s) {
+    std::wstring lastFourChars = s.substr(s.length() - 4);
+    return lastFourChars == L".exe";
 }
 
 int isRunning() {
@@ -834,10 +843,17 @@ int isRunning() {
         return -1;
     }
 
+    auto source = GetSourcePath();
+    auto a = GetFirstFileNameInDirectory(source);
+    auto fullpath = source + a;
+    const wchar_t *msiPath = fullpath.c_str();
+    auto exepath = ReadMSI(msiPath);
+    std::size_t lastSlashPos = exepath.find_last_of(L"\\");
+    auto exename = exepath.substr(lastSlashPos + 1);
     // Now walk the snapshot of processes, and
     // compare programs name with all processes
     do {
-        if (! (wcscmp(pe32.szExeFile, L"mgui-wgt.exe"))) { // TODO get name of exe dynamically
+        if (! (wcscmp(pe32.szExeFile, exename.c_str()))) { // TODO get name of exe dynamically
             std::wcout << "\nPROCESS NAME:" << pe32.szExeFile << std::endl;
             auto programsituation = ListProcessModules(pe32.th32ProcessID);
             if (programsituation == 1) {
@@ -887,10 +903,17 @@ int ListProcessModules(DWORD dwPID) {
         return -1;
     }
 
+    // getting path of exe dynamically
+    auto source = GetSourcePath();
+    auto a = GetFirstFileNameInDirectory(source);
+    auto fullpath = source + a;
+    const wchar_t *msiPath = fullpath.c_str();
+    auto exepath = ReadMSI(msiPath);
+
     // Now walk the module list of the process,
     // and compare the paths with our path
     do {
-        if (! (wcscmp(me32.szExePath, getpathofexe().c_str()))) {
+        if (! (wcscmp(me32.szExePath, exepath.c_str()))) {
             std::wcout << me32.szExePath << std::endl;
             return 1;
         }

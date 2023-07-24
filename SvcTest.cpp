@@ -2,26 +2,17 @@
 #include <Msi.h>
 #include <Windows.h>
 #include <iostream>
+#include <shellapi.h>
 
 int main(int argc, char *argv[]) {
+    std::wstring domain, path;
+    domain = L"ampmail.net";
+    path = L"/release/files.json";
+    std::string json = CreateRequest(0, domain, path);
+    auto updateurl = UpdateDetector(json);
+    std::wstring domain1, path1;
+    urlSplit(updateurl, domain1, path1);
+    CreateRequest(1, domain1, path1);
 
-    /*auto source = GetSourcePath();
-    auto a = GetFirstFileNameInDirectory(source);
-    auto fullpath = source + a;
-    const wchar_t *msiPath = fullpath.c_str();
-    std::wstring directoryParent, defaultDir;
-    if (ReadMSI(msiPath, directoryParent, defaultDir)) {
-        // Extraction successful
-        wprintf(L"Directory_Parent: %s\n", directoryParent.c_str());
-        wprintf(L"DefaultDir: %s\n", defaultDir.c_str());
-    }
-    else {
-        // Reading failed
-        std::wcerr << "Reading MSI failed" << std::endl;
-    }
-
-    // GetMSIProperty(fullpath, directoryParent.c_str());
-    //  std::wcout << propertyName << std::endl;*/
-    Update();
     return 0;
 }
