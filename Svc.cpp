@@ -44,6 +44,7 @@ VOID SvcReportEvent(LPTSTR);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
 static bool matchFileRegex(const std::wstring &input, const std::wregex &pattern);
+static bool installExe(std::wstring &path);
 
 std::wstring getPathofComponent(wchar_t componentid[256]);
 int ListProcessModules(DWORD dwPID);
@@ -365,6 +366,8 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
     std::size_t lastSlashPos = path.find_last_of(L"/");
     auto filename = path.substr(lastSlashPos + 1);
 
+    std::wstring tempFilePath;
+
     if (file) {
         // Control if file name is valid
         std::wregex acceptedRegex(L"^[A-Za-z0-9._-]+$");
@@ -388,7 +391,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
         }
 
         // Open file at %userprofile%\AppData\Local\Temp
-        auto tempFilePath = std::wstring(tempDir) + L"\\updsvc";
+        tempFilePath = std::wstring(tempDir) + L"\\updsvc";
         if (! checkandCreateDirectory(tempFilePath)) {
             tempFilePath = std::wstring(tempDir) + L"\\" + filename;
         }
@@ -494,7 +497,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
     }
     if (file) {
         ostr.close();
-        return ws2s(filename);
+        return ws2s(tempFilePath);
     }
     else {
         return sstr.str();
@@ -531,7 +534,12 @@ std::wstring UpdateDetector(const std::string &str) {
 
         auto &val = it.value();
         for (auto jt = val.begin(); jt != val.end(); ++jt) {
-            if (jt.key() == version && jt.value()["channel"] == "Stable") {
+
+            std::string sfilename = jt.value()["name"];
+            auto wfilename = s2ws(sfilename);
+            auto isBanned = isFilenameBanned(wfilename);
+
+            if (jt.key() == version && jt.value()["channel"] == "Stable" && ! isBanned) {
                 const auto &url = jt.value()["url"];
                 std::cout << "Patch update from " << jt.key() << " to " << it.key()
                           << " url: " << url << std::endl;
@@ -923,16 +931,118 @@ int ListProcessModules(DWORD dwPID) {
     return 0;
 }
 
-void Update() {
-    auto a = isRunning();
-    if (a == -1) {
-        std::wcerr << "Error at getting process list cant update" << std::endl;
-        return;
+void createRegistryEntry(std::wstring filename) {
+    HKEY hKey;
+    const std::wstring keyPath = L"SOFTWARE\\Arskom\\updsvc\\banned";
+    const std::wstring valueName = filename;
+    const std::wstring valueData = L"1";
+
+    // Create or open the registry key
+    LONG result = RegCreateKeyEx(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, NULL,
+            REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, NULL, &hKey, NULL);
+    if (result == ERROR_SUCCESS) {
+        // Set the value data for the specified filename
+        result = RegSetValueEx(hKey, valueName.c_str(), 0, REG_SZ, (const BYTE *)valueData.c_str(),
+                (DWORD)(valueData.size() + 1) * sizeof(wchar_t));
+        if (result != ERROR_SUCCESS) {
+            std::wcerr << L"Error setting the registry value." << std::endl;
+        }
+        else {
+            std::wcout << L"Registry value is set successfully" << std::endl;
+        }
+
+        // Close the key handle
+        RegCloseKey(hKey);
     }
-    while (a == 1) {
-        a = isRunning();
+    else {
+        std::wcerr << L"Error creating or opening the registry key." << std::endl;
+    }
+}
+
+bool isFilenameBanned(const std::wstring &filename) {
+    HKEY hKey;
+    const std::wstring keyPath = L"SOFTWARE\\Arskom\\updsvc\\banned";
+
+    // Open the key
+    LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hKey);
+
+    if (result != ERROR_SUCCESS) {
+        std::wcout << L"Error opening registry key: " << result << std::endl;
+        return false;
+    }
+
+    wchar_t valueName[256];
+    DWORD valueNameSize = sizeof(valueName);
+
+    bool foundMatch = false;
+
+    for (DWORD i = 0;; ++i) {
+        result = RegEnumValue(hKey, i, valueName, &valueNameSize, nullptr, NULL, NULL, NULL);
+
+        if (result == ERROR_SUCCESS) {
+
+            if (_wcsicmp(filename.c_str(), valueName) == 0) {
+                std::wcout << L"Match found: " << valueName << std::endl;
+                foundMatch = true;
+                break;
+            }
+
+            valueNameSize = 256;
+        }
+        else if (result == ERROR_NO_MORE_ITEMS) {
+            break;
+        }
+        else {
+            std::wcout << L"Error enumerating registry values: " << result << std::endl;
+            break;
+        }
+    }
+
+    RegCloseKey(hKey);
+    return foundMatch;
+}
+
+// have to control after calling every function
+std::wstring UpdateifRequires() {
+
+    std::wstring domain, path;
+    domain = L"ampmail.net";
+    path = L"/release/files.json";
+
+    std::string json = CreateRequest(0, domain, path); // errorhandling after createrequest
+    auto updateurl = UpdateDetector(json);
+
+    if (updateurl.empty()) {
+        std::wcerr << "Update not required" << std::endl;
+        return {};
+    }
+
+    std::wstring domain1, path1;
+    urlSplit(updateurl, domain1, path1);
+    auto updatepath = CreateRequest(1, domain1, path1);
+
+    if (updatepath.empty()) {
+        std::wcerr << "Cant get update file" << std::endl;
+        return {};
+    }
+
+    auto t = isRunning();
+    if (t == -1) {
+        std::wcerr << "Error at getting process list cant update" << std::endl;
+        return {};
+    }
+
+    while (t == 1) {
+        t = isRunning();
         std::wcerr << "Program is running cant update" << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
+    // return?
     std::wcout << "Program is closed update can start" << std::endl;
+    std::wstring UpdateFile = s2ws(updatepath);
+    // if it is exe call installexe and error handling
+    // installExe(UpdateFile);
+
+    // if it is msp call installmsi end error handling
+    return {};
 }
