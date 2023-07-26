@@ -44,11 +44,11 @@ VOID SvcReportEvent(LPTSTR);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
 static bool matchFileRegex(const std::wstring &input, const std::wregex &pattern);
-static bool installExe(std::wstring &path);
+static bool installExe(const std::wstring &exePath);
 
-std::wstring getPathofComponent(wchar_t componentid[256]);
-int ListProcessModules(DWORD dwPID);
-bool isexe(std::wstring s);
+static std::wstring getPathofComponent(wchar_t componentid[256]);
+static int ListProcessModules(DWORD dwPID);
+static bool isexe(std::wstring s);
 
 /**
  * @brief Entry point for the process
@@ -1042,7 +1042,65 @@ std::wstring UpdateifRequires() {
     std::wstring UpdateFile = s2ws(updatepath);
     // if it is exe call installexe and error handling
     // installExe(UpdateFile);
-
+    installExe(UpdateFile);
     // if it is msp call installmsi end error handling
     return {};
+}
+
+bool installExe(const std::wstring &exePath) {
+    STARTUPINFO si;
+    ZeroMemory(&si, sizeof(STARTUPINFO));
+    si.cb = sizeof(STARTUPINFO); // The size of the structure, in bytes.
+    PROCESS_INFORMATION pi;
+
+    wchar_t arguments[] = L" /install /quiet";
+
+    // Create the process
+    bool success = CreateProcess(exePath.c_str(), // The name of the module to be executed
+            arguments, // The command line to be executed.
+            NULL, // If lpProcessAttributes is NULL, the handle cannot be inherited
+            NULL, // If lpThreadAttributes is NULL, the handle cannot be inherited.
+            FALSE, // If the parameter is FALSE, the handles are not inherited
+            CREATE_NO_WINDOW, //
+            NULL, // If this parameter is NULL, the new process uses the environment of the calling
+                  // proces
+            NULL, // If this parameter is NULL, the new process will have the same current drive and
+                  // directory as the calling process
+            &si, // Startup Info
+            &pi // Process Information
+    );
+
+    // Check if the process was created successfully
+    if (! success) {
+        std::cout << "Error: CreateProcess failed with error code " << GetLastError() << std::endl;
+        return false;
+    }
+
+    // Wait for the process to finish
+    WaitForSingleObject(pi.hProcess, INFINITE);
+
+    // Get the exit code of the process
+    DWORD exitCode;
+    if (! GetExitCodeProcess(pi.hProcess, &exitCode)) {
+        std::cout << "Error: GetExitCodeProcess failed with error code " << GetLastError()
+                  << std::endl;
+    }
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    // Check the exit code to see if the process completed successfully
+    if (exitCode != 0) {
+        std::cout << "Error: The process returned a non-zero exit code: " << exitCode << std::endl;
+        std::size_t lastSlashPos = exePath.find_last_of(L'\\');
+        std::wstring filename = exePath.substr(lastSlashPos + 1);
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+        createRegistryEntry(filename);
+        UpdateifRequires();
+        return false;
+    }
+
+    std::cout << "Process ran successfully " << exitCode << std::endl;
+
+    return true;
 }
