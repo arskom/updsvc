@@ -40,12 +40,15 @@ VOID WINAPI SvcMain(DWORD, LPTSTR *);
 
 VOID ReportSvcStatus(DWORD, DWORD, DWORD);
 VOID SvcInit(DWORD, LPTSTR *);
-VOID SvcReportEvent(LPTSTR);
+VOID SvcReportInfo(std::wstring szFunction);
+VOID SvcReportEvent(std::wstring szFunction);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
 static bool matchFileRegex(const std::wstring &input, const std::wregex &pattern);
 static bool installExe(const std::wstring &exePath);
 
+bool isValueExists(std::wstring keyPath, const std::wstring stringvalue);
+void createRegistryEntry(std::wstring keyPath, std::wstring stringvalue, std::wstring valueData);
 static std::wstring getPathofComponent(wchar_t componentid[256]);
 static int ListProcessModules(DWORD dwPID);
 static bool isexe(std::wstring s);
@@ -325,7 +328,7 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl) {
 // Remarks:
 //   The service must have an entry in the Application event log.
 //
-VOID SvcReportEvent(LPTSTR szFunction) {
+VOID SvcReportEvent(std::wstring szFunction) {
     HANDLE hEventSource;
     LPCTSTR lpszStrings[2];
     TCHAR Buffer[80];
@@ -333,13 +336,40 @@ VOID SvcReportEvent(LPTSTR szFunction) {
     hEventSource = RegisterEventSource(NULL, SVCNAME);
 
     if (NULL != hEventSource) {
-        StringCchPrintf(Buffer, 80, TEXT("%s failed with %d"), szFunction, GetLastError());
+        StringCchPrintf(Buffer, 80, TEXT("%s failed with %d"), szFunction.c_str(), GetLastError());
 
         lpszStrings[0] = SVCNAME;
         lpszStrings[1] = Buffer;
 
         ReportEvent(hEventSource, // event log handle
                 EVENTLOG_ERROR_TYPE, // event type
+                0, // event category
+                SVC_ERROR, // event identifier
+                NULL, // no security identifier
+                2, // size of lpszStrings array
+                0, // no binary data
+                lpszStrings, // array of strings
+                NULL); // no binary data
+
+        DeregisterEventSource(hEventSource);
+    }
+}
+
+VOID SvcReportInfo(std::wstring szFunction) {
+    HANDLE hEventSource;
+    LPCTSTR lpszStrings[2];
+    TCHAR Buffer[80];
+
+    hEventSource = RegisterEventSource(NULL, SVCNAME);
+
+    if (NULL != hEventSource) {
+        StringCchPrintf(Buffer, 80, TEXT("%s"), szFunction.c_str());
+
+        lpszStrings[0] = SVCNAME;
+        lpszStrings[1] = Buffer;
+
+        ReportEvent(hEventSource, // event log handle
+                EVENTLOG_SUCCESS, // event type
                 0, // event category
                 SVC_ERROR, // event identifier
                 NULL, // no security identifier
@@ -537,7 +567,8 @@ UpdateInfo UpdateDetector(const std::string &str) {
 
             std::string sfilename = jt.value()["name"];
             auto wfilename = s2ws(sfilename);
-            auto isBanned = isFilenameBanned(wfilename);
+
+            auto isBanned = isValueExists(L"SOFTWARE\\Arskom\\updsvc\\banned", wfilename);
 
             if (jt.key() == version && jt.value()["channel"] == "Stable" && ! isBanned) {
                 const auto &url = jt.value()["url"];
@@ -836,7 +867,7 @@ int isRunning() {
     // Take a snapshot of all processes in the system.
     hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hProcessSnap == INVALID_HANDLE_VALUE) {
-        std::wcerr << "Error taking snapshot of processes" << std::endl;
+        SvcReportEvent((L"Taking snapshot of all processes"));
         return -1;
     }
 
@@ -846,7 +877,7 @@ int isRunning() {
     // Retrieve information about the first process,
     // and exit if unsuccessful
     if (! Process32First(hProcessSnap, &pe32)) {
-        std::wcerr << "Cant retrieve information about firs process" << std::endl;
+        SvcReportEvent((L"Retrieve information about first process"));
         CloseHandle(hProcessSnap); // clean the snapshot object
         return -1;
     }
@@ -896,7 +927,7 @@ int ListProcessModules(DWORD dwPID) {
     // Take a snapshot of all modules in the specified process.
     hModuleSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, dwPID);
     if (hModuleSnap == INVALID_HANDLE_VALUE) {
-        std::wcerr << "Create tool help error" << std::endl;
+        SvcReportEvent((L"Taking snapshot of all modules"));
         return -1;
     }
 
@@ -906,7 +937,7 @@ int ListProcessModules(DWORD dwPID) {
     // Retrieve information about the first module,
     // and exit if unsuccessful
     if (! Module32First(hModuleSnap, &me32)) {
-        std::wcerr << "Cant retrieve information about firs module" << std::endl;
+        SvcReportEvent((L"Retrieving information about first module"));
         CloseHandle(hModuleSnap); // clean the snapshot object
         return -1;
     }
@@ -931,21 +962,18 @@ int ListProcessModules(DWORD dwPID) {
     return 0;
 }
 
-void createRegistryEntry(std::wstring filename) {
+void createRegistryEntry(std::wstring keyPath, std::wstring stringvalue, std::wstring valueData) {
     HKEY hKey;
-    const std::wstring keyPath = L"SOFTWARE\\Arskom\\updsvc\\banned";
-    const std::wstring valueName = filename;
-    const std::wstring valueData = L"1";
 
     // Create or open the registry key
     LONG result = RegCreateKeyEx(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, NULL,
             REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, NULL, &hKey, NULL);
     if (result == ERROR_SUCCESS) {
         // Set the value data for the specified filename
-        result = RegSetValueEx(hKey, valueName.c_str(), 0, REG_SZ, (const BYTE *)valueData.c_str(),
-                (DWORD)(valueData.size() + 1) * sizeof(wchar_t));
+        result = RegSetValueEx(hKey, stringvalue.c_str(), 0, REG_SZ,
+                (const BYTE *)valueData.c_str(), (DWORD)(valueData.size() + 1) * sizeof(wchar_t));
         if (result != ERROR_SUCCESS) {
-            std::wcerr << L"Error setting the registry value." << std::endl;
+            SvcReportEvent((L"Setting registry value"));
         }
         else {
             std::wcout << L"Registry value is set successfully" << std::endl;
@@ -955,19 +983,18 @@ void createRegistryEntry(std::wstring filename) {
         RegCloseKey(hKey);
     }
     else {
-        std::wcerr << L"Error creating or opening the registry key." << std::endl;
+        SvcReportEvent((L"Creating or opening the registry key"));
     }
 }
 
-bool isFilenameBanned(const std::wstring &filename) {
+bool isValueExists(std::wstring keyPath, const std::wstring stringvalue) {
     HKEY hKey;
-    const std::wstring keyPath = L"SOFTWARE\\Arskom\\updsvc\\banned";
 
     // Open the key
     LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hKey);
 
     if (result != ERROR_SUCCESS) {
-        std::wcout << L"Error opening registry key: " << result << std::endl;
+        SvcReportEvent((L"Opening registry"));
         return false;
     }
 
@@ -981,7 +1008,7 @@ bool isFilenameBanned(const std::wstring &filename) {
 
         if (result == ERROR_SUCCESS) {
 
-            if (_wcsicmp(filename.c_str(), valueName) == 0) {
+            if (_wcsicmp(stringvalue.c_str(), valueName) == 0) {
                 std::wcout << L"Match found: " << valueName << std::endl;
                 foundMatch = true;
                 break;
@@ -993,7 +1020,7 @@ bool isFilenameBanned(const std::wstring &filename) {
             break;
         }
         else {
-            std::wcout << L"Error enumerating registry values: " << result << std::endl;
+            SvcReportEvent((L"Enumerating registry values"));
             break;
         }
     }
@@ -1023,13 +1050,13 @@ std::wstring UpdateifRequires() {
     auto updatepath = CreateRequest(1, domain1, path1);
 
     if (updatepath.empty()) {
-        std::wcerr << "Cant get update file" << std::endl;
+        SvcReportEvent((L"Getting update file"));
         return {};
     }
 
     auto t = isRunning();
     if (t == -1) {
-        std::wcerr << "Error at getting process list cant update" << std::endl;
+        SvcReportEvent((L"Getting process list"));
         return {};
     }
 
@@ -1039,7 +1066,7 @@ std::wstring UpdateifRequires() {
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
     // return?
-    std::wcout << "Program is closed update can start" << std::endl;
+    SvcReportEvent(L"Program is closed update can start");
     std::wstring UpdateFile = s2ws(updatepath);
     // if it is exe call installexe and error handling
     // installExe(UpdateFile);
@@ -1073,7 +1100,7 @@ bool installExe(const std::wstring &exePath) {
 
     // Check if the process was created successfully
     if (! success) {
-        std::cout << "Error: CreateProcess failed with error code " << GetLastError() << std::endl;
+        SvcReportEvent((L"Create process for installing exe"));
         return false;
     }
 
@@ -1083,8 +1110,7 @@ bool installExe(const std::wstring &exePath) {
     // Get the exit code of the process
     DWORD exitCode;
     if (! GetExitCodeProcess(pi.hProcess, &exitCode)) {
-        std::cout << "Error: GetExitCodeProcess failed with error code " << GetLastError()
-                  << std::endl;
+        SvcReportEvent((L"GetExitCode of installing exe"));
     }
 
     CloseHandle(pi.hProcess);
@@ -1092,11 +1118,11 @@ bool installExe(const std::wstring &exePath) {
 
     // Check the exit code to see if the process completed successfully
     if (exitCode != 0) {
-        std::cout << "Error: The process returned a non-zero exit code: " << exitCode << std::endl;
+        SvcReportEvent((L"Update installing"));
         std::size_t lastSlashPos = exePath.find_last_of(L'\\');
         std::wstring filename = exePath.substr(lastSlashPos + 1);
         std::this_thread::sleep_for(std::chrono::seconds(10));
-        createRegistryEntry(filename);
+        createRegistryEntry(L"SOFTWARE\\Arskom\\updsvc\\banned", filename, L"1");
         UpdateifRequires();
         return false;
     }

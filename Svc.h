@@ -29,7 +29,8 @@ std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath);
 std::wstring GetMSIProperty(const std::wstring &msiFilePath, const std::wstring &propertyName);
 int isRunning();
 void Update();
-void createRegistryEntry(std::wstring filename);
+void createRegistryEntry(std::wstring path, std::wstring filename);
 bool isFilenameBanned(const std::wstring &filename);
 std::wstring UpdateifRequires();
+
 #endif // SVC_H
