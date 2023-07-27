@@ -504,7 +504,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
     }
 }
 
-std::wstring UpdateDetector(const std::string &str) {
+UpdateInfo UpdateDetector(const std::string &str) {
     using json = nlohmann::json;
     json j_complete;
     const auto wversion = GetProgramVersion();
@@ -543,7 +543,7 @@ std::wstring UpdateDetector(const std::string &str) {
                 const auto &url = jt.value()["url"];
                 std::cout << "Patch update from " << jt.key() << " to " << it.key()
                           << " url: " << url << std::endl;
-                return s2ws(std::string_view(url));
+                return {s2ws(std::string_view(url)), true};
             }
         }
 
@@ -551,7 +551,7 @@ std::wstring UpdateDetector(const std::string &str) {
             const auto &url = val["null"]["url"];
             std::cout << "Full update from " << version << " to " << it.key() << " url: " << url
                       << std::endl;
-            return s2ws(std::string_view(url));
+            return {s2ws(std::string_view(url)), false};
         }
 
         std::cout << "Package version " << it.key() << " channel " << val["null"]["channel"]
@@ -1010,7 +1010,8 @@ std::wstring UpdateifRequires() {
     path = L"/release/files.json";
 
     std::string json = CreateRequest(0, domain, path); // errorhandling after createrequest
-    auto updateurl = UpdateDetector(json);
+    auto update_info = UpdateDetector(json);
+    auto &updateurl = update_info.url;
 
     if (updateurl.empty()) {
         std::wcerr << "Update not required" << std::endl;

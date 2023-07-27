@@ -4,23 +4,14 @@
 #include <Windows.h>
 #include <sstream>
 
-struct Buffer {
-    char *data;
-    unsigned long size;
-
-    Buffer() : data(nullptr), size(0) {}
-    Buffer(char *d, unsigned long s) : data(d), size(s) {}
-
-    ~Buffer() {
-        if (data) {
-            delete[] data;
-        }
-    }
+struct UpdateInfo {
+    std::wstring url;
+    bool is_patch = false;
 };
 
 std::string CreateRequest(bool file, const std::wstring &domain, const std::wstring &path);
 std::wstring GetProgramVersion();
-std::wstring UpdateDetector(const std::string &sstr);
+UpdateInfo UpdateDetector(const std::string &sstr);
 int compareVersions(const std::string &version1, const std::wstring &version2);
 void urlSplit(const std::wstring &url, std::wstring &domain, std::wstring &path);
 bool checkandCreateDirectory(std::wstring path);
