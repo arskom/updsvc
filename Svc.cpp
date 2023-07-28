@@ -28,6 +28,7 @@
 #include <processthreadsapi.h>
 
 #define uid TEXT("{028818E2-5DF4-414F-A1E4-2AA542DE4697}")
+#define registryPath L"SOFTWARE\\Arskom\\updsvc";
 
 #define SVCNAME TEXT("UpdSvc")
 static SERVICE_STATUS gSvcStatus;
@@ -45,14 +46,15 @@ VOID SvcReportEvent(std::wstring szFunction);
 
 static std::vector<int> splitString(const std::string &str, char delimiter);
 static bool matchFileRegex(const std::wstring &input, const std::wregex &pattern);
-static bool installExe(const std::wstring &exePath);
+static bool installExe(Config cfg, const std::wstring exePath, bool ispatch);
 
 bool isValueExists(std::wstring keyPath, const std::wstring stringvalue);
 void createRegistryEntry(std::wstring keyPath, std::wstring stringvalue, std::wstring valueData);
-static std::wstring getPathofComponent(wchar_t componentid[256]);
-static int ListProcessModules(DWORD dwPID);
+static std::wstring getPathofComponent(Config cfg, wchar_t componentid[256]);
+static int ListProcessModules(Config cfg, DWORD dwPID);
 static bool isexe(std::wstring s);
 
+LPSTR WstringToLPSTR(const std::wstring &wstr);
 /**
  * @brief Entry point for the process
  * @param argc Number of arguments
@@ -213,6 +215,26 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
     // Create an event. The control handler function, SvcCtrlHandler,
     // signals this event when it receives the stop control code.
 
+    Config cfg;
+    cfg.url = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"URL");
+    cfg.product_guid = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"PRODUCT_GUID");
+    cfg.params_full = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"PARAMS_FULL");
+    cfg.params_patch = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"PARAMS_PATCH");
+    cfg.period = ReadDWORDFromRegedit(L"SOFTWARE\\Arskom\\updsvc", L"PERIOD");
+    if (cfg.url.empty()) {
+        SvcReportEvent(L"Service cant start, url is empty or getting url from registry");
+    }
+    if (cfg.product_guid.empty()) {
+        SvcReportEvent(L"Service cant start, product guid is empty or getting it from registry");
+    }
+    if (cfg.params_full.empty()) {
+        SvcReportEvent(
+                L"Service cant start, full install parameter is empty or getting it from registry");
+    }
+    if (cfg.params_patch.empty()) {
+        SvcReportEvent(L"Service cant start, patch install parameter is empty or getting it from "
+                       L"registry");
+    }
     ghSvcStopEvent = CreateEvent(NULL, // default security attributes
             TRUE, // manual reset event
             FALSE, // not signaled
@@ -230,14 +252,11 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
     // TO_DO: Perform work until service stops.
 
     while (1) {
+        UpdateifRequires(cfg);
         // Check whether to stop the service.
 
         WaitForSingleObject(ghSvcStopEvent, INFINITE);
-
         ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
-
-        // CreateRequest();
-
         return;
     }
 }
@@ -402,7 +421,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
         // Control if file name is valid
         std::wregex acceptedRegex(L"^[A-Za-z0-9._-]+$");
         if (! (matchFileRegex(filename, acceptedRegex))) {
-            std::wcerr << "Invalid file, this file cannot be downloaded" << std::endl;
+            SvcReportInfo(L"Invalid file name, this file cannot be downloaded");
             return {};
         }
 
@@ -416,7 +435,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
             tempDir = s2ws(std::string_view{ret});
         }
         if (tempDir.empty()) {
-            std::wcerr << "Failed to retrieve the temporary directory path." << std::endl;
+            SvcReportEvent(L"Retrieve the temporary directory path");
             return {};
         }
 
@@ -428,7 +447,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
         tempFilePath = std::wstring(tempDir) + L"\\updsvc\\" + filename;
         ostr.open(tempFilePath, std::ios::trunc | std::ios::binary);
         if (! ostr.is_open()) {
-            std::wcerr << "Failed to open file." << std::endl;
+            SvcReportEvent(L"Opening file(update file)");
             return {};
         }
     }
@@ -443,22 +462,25 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
     // Specify an HTTP server.
     if (hSession) {
         hConnect = WinHttpConnect(hSession, lpcwstrDomain, INTERNET_DEFAULT_PORT, 0);
+        SvcReportInfo(L"HTTP server specified");
     }
     // Create an HTTP Request handle.
     if (hConnect) {
         hRequest = WinHttpOpenRequest(hConnect, L"GET", lpcwstrPath, NULL, WINHTTP_NO_REFERER,
                 WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+        SvcReportInfo(L"HTTP request handle created");
     }
     // Send a Request.
     if (hRequest) {
         bResults = WinHttpSendRequest(
                 hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-        SvcReportEvent(L"request sent");
+        SvcReportInfo(L"Request sent");
     }
 
     // End the request.
     if (bResults) {
         bResults = WinHttpReceiveResponse(hRequest, NULL);
+        SvcReportInfo(L"Request ended");
     }
 
     // Keep checking for data until there is nothing left.
@@ -467,7 +489,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
             // Check for available data.
             dwSize = 0;
             if (! WinHttpQueryDataAvailable(hRequest, &dwSize)) {
-                printf("Error %lu in WinHttpQueryDataAvailable.\n", GetLastError());
+                SvcReportEvent(L"WinHttpQueryDataAvailable");
                 break;
             }
 
@@ -479,7 +501,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
             // Allocate space for the buffer.
             auto pszOutBuffer = new char[dwSize + 1];
             if (! pszOutBuffer) {
-                printf("Out of memory\n");
+                SvcReportInfo(L"Out of memory");
                 break;
             }
 
@@ -487,8 +509,7 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
             ZeroMemory(pszOutBuffer, dwSize + 1);
 
             if (! WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {
-                printf("Error %lu in WinHttpReadData.\n", GetLastError());
-                SvcReportEvent(L"failed to read");
+                SvcReportEvent(L"WinHttpReadData");
                 break;
             }
 
@@ -500,19 +521,17 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
                 sstr << std::string_view(pszOutBuffer, dwSize);
             }
             delete[] pszOutBuffer;
-            SvcReportEvent(L"data read");
 
             // This condition should never be reached since WinHttpQueryDataAvailable
             // reported that there are bits to read.
             if (dwDownloaded == 0) {
                 break;
             }
-
         } while (dwSize > 0);
     }
     else {
         // Report any errors.
-        printf("Error %lu has occurred.\n", GetLastError());
+        SvcReportEvent(L"Sending request");
     }
 
     // Close any open handles.
@@ -527,28 +546,28 @@ std::string CreateRequest(bool file, const std::wstring &domain, const std::wstr
     }
     if (file) {
         ostr.close();
+        SvcReportInfo(L"File downloaded succesfully");
         return ws2s(tempFilePath);
     }
     else {
+        SvcReportInfo(L"Data downloaded succesfully");
         return sstr.str();
     }
 }
 
-UpdateInfo UpdateDetector(const std::string &str) {
+UpdateInfo UpdateDetector(Config cfg, const std::string &strjson) {
     using json = nlohmann::json;
     json j_complete;
-    const auto wversion = GetProgramVersion();
+    const auto wversion = GetProgramVersion(cfg);
     const auto version = ws2s(wversion);
 
     try {
         // parsing input with a syntax error
-        j_complete = json::parse(str);
+        j_complete = json::parse(strjson);
     }
     catch (json::parse_error &e) {
         // output exception information
-        std::wcout << "message: " << e.what() << '\n'
-                   << "exception id: " << e.id << '\n'
-                   << "byte position of error: " << e.byte << std::endl;
+        SvcReportEvent(L"Json parse");
         return {};
     }
 
@@ -572,6 +591,7 @@ UpdateInfo UpdateDetector(const std::string &str) {
 
             if (jt.key() == version && jt.value()["channel"] == "Stable" && ! isBanned) {
                 const auto &url = jt.value()["url"];
+                // SvcReportInfo(L"Patch update from %s to %s", jt.key(), it.key());
                 std::cout << "Patch update from " << jt.key() << " to " << it.key()
                           << " url: " << url << std::endl;
                 return {s2ws(std::string_view(url)), true};
@@ -662,29 +682,31 @@ void urlSplit(const std::wstring &url, std::wstring &domain, std::wstring &path)
 }
 
 // Function to retrieve the version of a program
-std::wstring GetProgramVersion() {
+std::wstring GetProgramVersion(Config cfg) {
     wchar_t versionBuffer[256];
     DWORD bufferSize = sizeof(versionBuffer);
 
     // Use MsiGetProductInfo for get the version
-    UINT result = MsiGetProductInfo(uid, INSTALLPROPERTY_VERSIONSTRING, versionBuffer, &bufferSize);
+    UINT result = MsiGetProductInfo(
+            cfg.product_guid.c_str(), INSTALLPROPERTY_VERSIONSTRING, versionBuffer, &bufferSize);
     if (result == ERROR_SUCCESS) {
         return std::wstring(versionBuffer);
     }
-
+    SvcReportEvent(L"Getting program version");
     return {};
 }
 
-std::wstring GetSourcePath() {
+std::wstring GetSourcePath(Config cfg) {
     wchar_t versionBuffer[1024];
     DWORD bufferSize = sizeof(versionBuffer);
 
     // Use MsiGetProductInfo for get the source path
-    UINT result = MsiGetProductInfo(uid, INSTALLPROPERTY_INSTALLSOURCE, versionBuffer, &bufferSize);
+    UINT result = MsiGetProductInfo(
+            cfg.product_guid.c_str(), INSTALLPROPERTY_INSTALLSOURCE, versionBuffer, &bufferSize);
     if (result == ERROR_SUCCESS) {
         return std::wstring(versionBuffer);
     }
-
+    SvcReportEvent(L"Getting source path");
     return {};
 }
 
@@ -715,7 +737,7 @@ std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath) {
         HANDLE hFind = FindFirstFile((directoryPath + L"*").c_str(), &findFileData);
 
         if (hFind == INVALID_HANDLE_VALUE) {
-            std::wcerr << L"Failed to find the first file." << std::endl;
+            SvcReportEvent(L"Finding first file in directory(source file dir)");
             return L"";
         }
 
@@ -724,13 +746,12 @@ std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath) {
                 // Skip directories "." and ".."
                 if (wcscmp(findFileData.cFileName, L".") != 0
                         && wcscmp(findFileData.cFileName, L"..") != 0) {
-                    // Handle subdirectories if needed
-                    // ...
                 }
             }
             else {
                 // Return the first file name
                 FindClose(hFind);
+                SvcReportInfo(L"Source file found succesfully");
                 return findFileData.cFileName;
             }
         } while (FindNextFile(hFind, &findFileData) != 0);
@@ -738,6 +759,7 @@ std::wstring GetFirstFileNameInDirectory(const std::wstring &directoryPath) {
         FindClose(hFind);
     }
     // Return an empty string if the directory does not exist or contains no files.
+    SvcReportEvent(L"Directory does not exist or contains no files, getting name of first file");
     return L"";
 }
 
@@ -791,12 +813,12 @@ bool checkandCreateDirectory(std::wstring path) {
     }
 }
 
-std::wstring ReadMSI(const wchar_t *msiPath) {
+std::wstring ReadMSI(Config cfg, const wchar_t *msiPath) {
 
     // Open the MSI package
     MSIHANDLE hDatabase = 0;
     if (MsiOpenDatabase(msiPath, MSIDBOPEN_READONLY, &hDatabase) != ERROR_SUCCESS) {
-        std::wcerr << "Open MSI package failed" << std::endl;
+        SvcReportEvent(L"Open MSI package");
         return L"";
     }
 
@@ -805,14 +827,14 @@ std::wstring ReadMSI(const wchar_t *msiPath) {
     if (MsiDatabaseOpenView(hDatabase, L"SELECT ComponentId FROM Component", &hView)
             != ERROR_SUCCESS) {
         MsiCloseHandle(hDatabase);
-        std::wcerr << "Error preparing query" << std::endl;
+        SvcReportEvent(L"Preparing query (ReadMSI)");
         return L"";
     }
 
     // Execute the query
     if (MsiViewExecute(hView, 0) != ERROR_SUCCESS) {
         MsiCloseHandle(hDatabase);
-        std::wcerr << "Execute query failed" << std::endl;
+        SvcReportEvent(L"Execute query (ReadMSI)");
         return L"";
     }
 
@@ -827,12 +849,12 @@ std::wstring ReadMSI(const wchar_t *msiPath) {
         UINT res = MsiRecordGetString(hRecord, 1, componentId, &dirparentBufferSize);
 
         if (res != ERROR_SUCCESS) {
-            std::wcerr << "Read data failed" << std::endl;
+            SvcReportEvent(L"Read MSI");
             return L"";
         }
 
         // Get the information from the record
-        path = getPathofComponent(componentId);
+        path = getPathofComponent(cfg, componentId);
         // std::wcout << path << std::endl;
         if (isexe(path)) {
             std::wcout << path << std::endl;
@@ -847,10 +869,10 @@ std::wstring ReadMSI(const wchar_t *msiPath) {
     return L"";
 }
 
-std::wstring getPathofComponent(wchar_t componentid[256]) {
+std::wstring getPathofComponent(Config cfg, wchar_t componentid[256]) {
     wchar_t install[1024];
     DWORD installsize = sizeof(install);
-    MsiGetComponentPath(uid, componentid, install, &installsize);
+    MsiGetComponentPath(cfg.product_guid.c_str(), componentid, install, &installsize);
     std::wstring path = install;
     return path;
 }
@@ -860,7 +882,7 @@ bool isexe(std::wstring s) {
     return lastFourChars == L".exe";
 }
 
-int isRunning() {
+int isRunning(Config cfg) {
     HANDLE hProcessSnap;
     PROCESSENTRY32 pe32;
 
@@ -882,11 +904,11 @@ int isRunning() {
         return -1;
     }
 
-    auto source = GetSourcePath();
+    auto source = GetSourcePath(cfg);
     auto a = GetFirstFileNameInDirectory(source);
     auto fullpath = source + a;
     const wchar_t *msiPath = fullpath.c_str();
-    auto exepath = ReadMSI(msiPath);
+    auto exepath = ReadMSI(cfg, msiPath);
     std::size_t lastSlashPos = exepath.find_last_of(L"\\");
     auto exename = exepath.substr(lastSlashPos + 1);
     // Now walk the snapshot of processes, and
@@ -894,7 +916,7 @@ int isRunning() {
     do {
         if (! (wcscmp(pe32.szExeFile, exename.c_str()))) { // TODO get name of exe dynamically
             std::wcout << "\nPROCESS NAME:" << pe32.szExeFile << std::endl;
-            auto programsituation = ListProcessModules(pe32.th32ProcessID);
+            auto programsituation = ListProcessModules(cfg, pe32.th32ProcessID);
             if (programsituation == 1) {
                 return 1;
             }
@@ -920,7 +942,7 @@ int isRunning() {
 //   function returns 1
 // if module of mgu-wgt.exe dont contains our path
 //   function returns 0
-int ListProcessModules(DWORD dwPID) {
+int ListProcessModules(Config cfg, DWORD dwPID) {
     HANDLE hModuleSnap = INVALID_HANDLE_VALUE;
     MODULEENTRY32 me32;
 
@@ -943,22 +965,23 @@ int ListProcessModules(DWORD dwPID) {
     }
 
     // getting path of exe dynamically
-    auto source = GetSourcePath();
+    auto source = GetSourcePath(cfg);
     auto a = GetFirstFileNameInDirectory(source);
     auto fullpath = source + a;
     const wchar_t *msiPath = fullpath.c_str();
-    auto exepath = ReadMSI(msiPath);
+    auto exepath = ReadMSI(cfg, msiPath);
 
     // Now walk the module list of the process,
     // and compare the paths with our path
     do {
         if (! (wcscmp(me32.szExePath, exepath.c_str()))) {
-            std::wcout << me32.szExePath << std::endl;
+            SvcReportInfo(L"Program found in process list, cant update");
             return 1;
         }
     } while (Module32Next(hModuleSnap, &me32));
 
     CloseHandle(hModuleSnap);
+    SvcReportInfo(L"Update could start");
     return 0;
 }
 
@@ -976,7 +999,7 @@ void createRegistryEntry(std::wstring keyPath, std::wstring stringvalue, std::ws
             SvcReportEvent((L"Setting registry value"));
         }
         else {
-            std::wcout << L"Registry value is set successfully" << std::endl;
+            SvcReportInfo(L"Registry value is set successfully");
         }
 
         // Close the key handle
@@ -985,6 +1008,71 @@ void createRegistryEntry(std::wstring keyPath, std::wstring stringvalue, std::ws
     else {
         SvcReportEvent((L"Creating or opening the registry key"));
     }
+}
+
+std::wstring readDataString(std::wstring keyPath, std::wstring regValueName) {
+    HKEY hKey;
+    LONG openResult = RegOpenKeyEx(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hKey);
+    if (openResult != ERROR_SUCCESS) {
+        SvcReportEvent((L"Opening registry"));
+        return {};
+    }
+    DWORD bufferSize = 0;
+    LONG queryResult =
+            RegQueryValueEx(hKey, regValueName.c_str(), nullptr, nullptr, nullptr, &bufferSize);
+    if (queryResult == ERROR_FILE_NOT_FOUND) {
+        SvcReportEvent((L"Finding value in registry"));
+        RegCloseKey(hKey);
+        return {};
+    }
+    else if (queryResult != ERROR_SUCCESS) {
+        SvcReportEvent((L"Query the value with readDataString"));
+        RegCloseKey(hKey);
+        return {};
+    }
+
+    // Allocate memory for the string data
+    wchar_t *buffer = new wchar_t[bufferSize / sizeof(wchar_t)];
+
+    queryResult = RegQueryValueEx(hKey, regValueName.c_str(), nullptr, nullptr,
+            reinterpret_cast<BYTE *>(buffer), &bufferSize);
+    if (queryResult != ERROR_SUCCESS) {
+        std::wcout << L"Failed to query the value data for: " << regValueName << std::endl;
+        delete[] buffer; // Clean up allocated memory
+        RegCloseKey(hKey);
+        return {};
+    }
+
+    // Use the string data
+    std::wstring valueData = buffer;
+
+    // Clean up allocated memory and close the key handle
+    delete[] buffer;
+    RegCloseKey(hKey);
+
+    return valueData;
+}
+
+DWORD ReadDWORDFromRegedit(std::wstring keyPath, std::wstring regValueName) {
+    HKEY hKey;
+    DWORD dwValue = 0;
+    DWORD dwSize = sizeof(DWORD);
+
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        if (RegQueryValueEx(hKey, regValueName.c_str(), nullptr, nullptr,
+                    reinterpret_cast<LPBYTE>(&dwValue), &dwSize)
+                != ERROR_SUCCESS) {
+            SvcReportEvent(L"Read DWORD value from the Registry");
+            return {};
+        }
+        RegCloseKey(hKey);
+    }
+    else {
+        SvcReportEvent(L"Registry opening");
+        return {};
+    }
+
+    return dwValue;
 }
 
 bool isValueExists(std::wstring keyPath, const std::wstring stringvalue) {
@@ -1009,7 +1097,7 @@ bool isValueExists(std::wstring keyPath, const std::wstring stringvalue) {
         if (result == ERROR_SUCCESS) {
 
             if (_wcsicmp(stringvalue.c_str(), valueName) == 0) {
-                std::wcout << L"Match found: " << valueName << std::endl;
+                SvcReportInfo(L"isValueExists find value succesfuly");
                 foundMatch = true;
                 break;
             }
@@ -1030,18 +1118,19 @@ bool isValueExists(std::wstring keyPath, const std::wstring stringvalue) {
 }
 
 // have to control after calling every function
-std::wstring UpdateifRequires() {
+std::wstring UpdateifRequires(Config cfg) {
 
     std::wstring domain, path;
-    domain = L"ampmail.net";
-    path = L"/release/files.json";
+
+    urlSplit(cfg.url, domain, path);
 
     std::string json = CreateRequest(0, domain, path); // errorhandling after createrequest
-    auto update_info = UpdateDetector(json);
+    auto update_info = UpdateDetector(cfg, json);
     auto &updateurl = update_info.url;
+    auto ispatch = update_info.is_patch;
 
     if (updateurl.empty()) {
-        std::wcerr << "Update not required" << std::endl;
+        SvcReportInfo(L"Update not required");
         return {};
     }
 
@@ -1054,38 +1143,42 @@ std::wstring UpdateifRequires() {
         return {};
     }
 
-    auto t = isRunning();
+    auto t = isRunning(cfg);
     if (t == -1) {
         SvcReportEvent((L"Getting process list"));
         return {};
     }
 
     while (t == 1) {
-        t = isRunning();
-        std::wcerr << "Program is running cant update" << std::endl;
+        t = isRunning(cfg);
+        SvcReportInfo(L"Program is running cant update");
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
     // return?
     SvcReportEvent(L"Program is closed update can start");
     std::wstring UpdateFile = s2ws(updatepath);
-    // if it is exe call installexe and error handling
-    // installExe(UpdateFile);
-    installExe(UpdateFile);
-    // if it is msp call installmsi end error handling
+
+    installExe(cfg, UpdateFile, ispatch);
+    // error handling
     return {};
 }
 
-bool installExe(const std::wstring &exePath) {
+bool installExe(Config cfg, const std::wstring exePath, bool ispatch) {
     STARTUPINFO si;
     ZeroMemory(&si, sizeof(STARTUPINFO));
     si.cb = sizeof(STARTUPINFO); // The size of the structure, in bytes.
     PROCESS_INFORMATION pi;
-
-    wchar_t arguments[] = L" /install /quiet";
+    std::wstring argument;
+    if (! ispatch) {
+        argument = cfg.params_full;
+    }
+    else {
+        argument = cfg.params_patch;
+    }
 
     // Create the process
     bool success = CreateProcess(exePath.c_str(), // The name of the module to be executed
-            arguments, // The command line to be executed.
+            const_cast<LPWSTR>(argument.c_str()), // The command line to be executed.
             NULL, // If lpProcessAttributes is NULL, the handle cannot be inherited
             NULL, // If lpThreadAttributes is NULL, the handle cannot be inherited.
             FALSE, // If the parameter is FALSE, the handles are not inherited
@@ -1123,11 +1216,10 @@ bool installExe(const std::wstring &exePath) {
         std::wstring filename = exePath.substr(lastSlashPos + 1);
         std::this_thread::sleep_for(std::chrono::seconds(10));
         createRegistryEntry(L"SOFTWARE\\Arskom\\updsvc\\banned", filename, L"1");
-        UpdateifRequires();
-        return false;
+        UpdateifRequires(cfg);
+        return false; //??
     }
 
-    std::cout << "Process ran successfully " << exitCode << std::endl;
-
+    SvcReportInfo(L"Exe installed successfully");
     return true;
 }
