@@ -26,7 +26,13 @@ protected:
 
 	// Generated message map functions
 	virtual BOOL OnInitDialog();
-	afx_msg void OnPaint();
-	afx_msg HCURSOR OnQueryDragIcon();
-	DECLARE_MESSAGE_MAP()
+        afx_msg void OnPaint();
+        afx_msg HCURSOR OnQueryDragIcon();
+        DECLARE_MESSAGE_MAP()
+    public:
+        afx_msg void OnBnClickedOk();
+        afx_msg void OnCbnSelchangeComboPeriod();
+        afx_msg void OnCbnSelchangeComboRelchan();
+        CComboBox selected_relchan;
+        CComboBox selected_period;
 };

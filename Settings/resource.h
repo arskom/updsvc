@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
-// Microsoft Visual C++ generated include file.
-// Used by Settings.rc
+// Microsoft Visual C++ içerme dosyasý oluþturdu.
+// Settings.rc tarafýndan kullanýlmýþ
 //
 #define IDD_SETTINGS_DIALOG             102
 #define IDR_MAINFRAME                   128
