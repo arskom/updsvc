@@ -76,7 +76,7 @@ bool WriteRegistryString(
 
     if (RegSetValueExW(hSubKey, valueName.c_str(), 0, REG_SZ,
                 reinterpret_cast<const BYTE *>(data.c_str()),
-                static_cast<DWORD>((data.length() + 1) * sizeof(wchar_t)))
+                static_cast<DWORD>((data.length()) * sizeof(wchar_t)))
             != ERROR_SUCCESS) {
         RegCloseKey(hSubKey);
         return false;

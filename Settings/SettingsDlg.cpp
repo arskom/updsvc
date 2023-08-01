@@ -45,6 +45,11 @@ BOOL CSettingsDlg::OnInitDialog() {
   SetIcon(m_hIcon, TRUE);  // Set big icon
   SetIcon(m_hIcon, FALSE); // Set small icon
 
+  SetWindowLong(this->m_hWnd, GWL_STYLE,
+          GetWindowLong(this->m_hWnd, GWL_STYLE) | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
+  CWnd *pWnd = GetDlgItem(IDOK);
+  pWnd->SendMessage(BCM_SETSHIELD, 0, TRUE);
+
   // TODO: Add extra initialization here
   DWORD periodvalueFromRegistry =
           ReadRegistryDWORDValue(L"PERIOD");
