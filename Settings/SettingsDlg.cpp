@@ -15,6 +15,7 @@
 #endif
 CString ReadRegistryStringValue(const CString &valueName);
 DWORD ReadRegistryDWORDValue(const CString &valueName);
+CString GetPathOfWrite();
 
 CSettingsDlg::CSettingsDlg(CWnd *pParent /*=nullptr*/)
     : CDialogEx(IDD_SETTINGS_DIALOG, pParent) {
@@ -46,7 +47,7 @@ BOOL CSettingsDlg::OnInitDialog() {
   SetIcon(m_hIcon, FALSE); // Set small icon
 
   SetWindowLong(this->m_hWnd, GWL_STYLE,
-          GetWindowLong(this->m_hWnd, GWL_STYLE) | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
+          GetWindowLong(this->m_hWnd, GWL_STYLE) | WS_SYSMENU);
   CWnd *pWnd = GetDlgItem(IDOK);
   pWnd->SendMessage(BCM_SETSHIELD, 0, TRUE);
 
@@ -122,8 +123,57 @@ HCURSOR CSettingsDlg::OnQueryDragIcon() {
 }
 
 void CSettingsDlg::OnBnClickedOk() {
-  // TODO:Kontrol bildirimi iþleyicinizin kodunu buraya ekleyin
-  
+  CString newExePath = GetPathOfWrite();
+  if (newExePath.IsEmpty()) {
+    AfxMessageBox(L"Path of executable is empty.");
+  }
+
+  int selectedperiod = selected_period.GetCurSel();
+  CString periodstr,paramperiod;
+  if (selectedperiod != LB_ERR) {
+    selected_period.GetLBText(selectedperiod, periodstr);
+  }
+  if (periodstr == _T("Every Hour")) {
+    paramperiod = L"3600";
+  }
+  else if (periodstr == _T("Every 24 Hours")) {
+    paramperiod = L"86400";
+  }
+  else if (periodstr == _T("Every Week")) {
+    paramperiod = L"604800";
+  }
+  else {
+    paramperiod = L"21600";
+  }
+
+  int selectedchannel = selected_relchan.GetCurSel();
+  CString relchanstr;
+  if (selectedchannel != LB_ERR) {
+    selected_relchan.GetLBText(selectedchannel, relchanstr);
+  }
+
+  LPCWSTR lpParamPeriod = paramperiod.GetString();
+  LPCWSTR lpRelChanStr = relchanstr.GetString();
+
+  CString cmdLineArgs;
+  cmdLineArgs.Format(_T(" %s %s"), lpParamPeriod, lpRelChanStr);
+
+  STARTUPINFO si = {sizeof(STARTUPINFO)};
+  PROCESS_INFORMATION pi;
+
+  BOOL success = CreateProcess(newExePath, cmdLineArgs.GetBuffer(), nullptr, nullptr, FALSE,
+          CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_CONSOLE | CREATE_BREAKAWAY_FROM_JOB, nullptr,
+          nullptr, &si, &pi);
+
+  if (success) {
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+  }
+  else {
+    AfxMessageBox(L"Failed to run updsvc-write.exe with administrator privileges.");
+  }
+
   CDialogEx::OnOK();
 }
 
@@ -174,4 +224,21 @@ DWORD ReadRegistryDWORDValue(const CString &valueName) {
   }
 
   return data;
+}
+
+CString GetPathOfWrite() {
+  TCHAR exePath[MAX_PATH];
+  DWORD pathLength = GetModuleFileName(nullptr, exePath, MAX_PATH);
+  if (pathLength == 0 || pathLength >= MAX_PATH) {
+    // Handle the error if GetModuleFileName fails
+    AfxMessageBox(L"Failed to get the path of the current executable.");
+    return {};
+  }
+
+  // Remove the filename part to get the directory path
+  PathRemoveFileSpec(exePath);
+
+  CString newExePath;
+  newExePath.Format(_T("%s\\updsvc-write.exe"), exePath);
+  return newExePath;
 }
