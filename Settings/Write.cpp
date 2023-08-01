@@ -1,4 +1,3 @@
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <windows.h>
@@ -9,17 +8,9 @@ bool WriteRegistryString(
         const std::wstring &subKey, const std::wstring &valueName, const std::wstring &data);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdShow) {
-    std::ofstream out;
-    out.open("out.log", std::ios::app);
-    if (! out.is_open()) {
-        return 1;
-    }
 
     int argc = 0;
     LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-
-    out << "hello" << std::endl;
-    out << ws2s(argv[0]) << std::endl;
 
     std::wstringstream converter(argv[1]);
     DWORD dwordValue;
@@ -27,10 +18,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 
     WriteRegistryDWORD(L"SOFTWARE\\Arskom\\updsvc", L"PERIOD", dwordValue);
     WriteRegistryString(L"SOFTWARE\\Arskom\\updsvc", L"REL_CHAN", argv[2]);
-    out << ws2s(argv[1]) << std::endl;
-    out << ws2s(argv[2]) << std::endl;
-    out << argc << std::endl;
-    out.close();
+
     return 0;
 }
 
@@ -85,10 +73,3 @@ bool WriteRegistryString(
     RegCloseKey(hSubKey);
     return true;
 }
-
-/*DWORD ws2dw(std::wstring s) {
-    std::wstringstream converter(s);
-    DWORD dwordValue;
-    converter >> dwordValue;
-    return s;
-}*/
