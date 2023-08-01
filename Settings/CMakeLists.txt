@@ -15,13 +15,16 @@ add_executable(updsvc-settings
     SettingsDlg.cpp
 )
 
+#updsvc-setings
 target_compile_definitions(updsvc-settings PRIVATE _AFXDLL)
 target_link_options(updsvc-settings PRIVATE "/entry:wWinMainCRTStartup")
 set_target_properties(updsvc-settings PROPERTIES WIN32_EXECUTABLE TRUE)
 
+
+#updsvc-write
 add_executable(updsvc-write
     Write.cpp
+    updsvc-write.exe.manifest
 )
-
 set_target_properties(updsvc-write PROPERTIES WIN32_EXECUTABLE TRUE)
 
