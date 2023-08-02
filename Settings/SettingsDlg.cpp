@@ -76,7 +76,9 @@ BOOL CSettingsDlg::OnInitDialog() {
   }
   
   CString channelvalueFromRegistry = ReadRegistryStringValue(L"REL_CHAN");
-
+  if (channelvalueFromRegistry.IsEmpty()) {
+      selected_relchan.SelectString(-1, L"Stable");
+  }
   // Initialize the ComboBox controls with the value from the registry
   int index2 = selected_relchan.SelectString(-1, channelvalueFromRegistry);
   if (index2 == CB_ERR) {
@@ -84,6 +86,8 @@ BOOL CSettingsDlg::OnInitDialog() {
       // Handle the situation accordingly
       return FALSE;
   }
+  
+
 
 
   return TRUE; // return TRUE  unless you set the focus to a control
@@ -126,6 +130,7 @@ void CSettingsDlg::OnBnClickedOk() {
   CString newExePath = GetPathOfWrite();
   if (newExePath.IsEmpty()) {
     AfxMessageBox(L"Path of executable is empty.");
+    return;
   }
 
   int selectedperiod = selected_period.GetCurSel();
@@ -136,6 +141,9 @@ void CSettingsDlg::OnBnClickedOk() {
   if (periodstr == _T("Every Hour")) {
     paramperiod = L"3600";
   }
+  else if (periodstr == _T("Every Hour")) {
+    paramperiod = L"21600";
+  }
   else if (periodstr == _T("Every 24 Hours")) {
     paramperiod = L"86400";
   }
@@ -143,7 +151,7 @@ void CSettingsDlg::OnBnClickedOk() {
     paramperiod = L"604800";
   }
   else {
-    paramperiod = L"21600";
+    paramperiod = L"0";
   }
 
   int selectedchannel = selected_relchan.GetCurSel();
@@ -152,26 +160,20 @@ void CSettingsDlg::OnBnClickedOk() {
     selected_relchan.GetLBText(selectedchannel, relchanstr);
   }
 
-  LPCWSTR lpParamPeriod = paramperiod.GetString();
-  LPCWSTR lpRelChanStr = relchanstr.GetString();
+  CString param = _T(" ") + paramperiod + _T(" ") + relchanstr;
 
-  CString cmdLineArgs;
-  cmdLineArgs.Format(_T(" %s %s"), lpParamPeriod, lpRelChanStr);
+  HINSTANCE result = ShellExecute(NULL, _T("runas"), newExePath, param, NULL, SW_SHOWNORMAL);
 
-  STARTUPINFO si = {sizeof(STARTUPINFO)};
-  PROCESS_INFORMATION pi;
+  if ((INT_PTR)result <= 32) {
+    DWORD error = GetLastError();
+    LPVOID lpMsgBuf;
+    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+                    | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&lpMsgBuf, 0, NULL);
 
-  BOOL success = CreateProcess(newExePath, cmdLineArgs.GetBuffer(), nullptr, nullptr, FALSE,
-          CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_CONSOLE | CREATE_BREAKAWAY_FROM_JOB, nullptr,
-          nullptr, &si, &pi);
+    AfxMessageBox((LPCTSTR)lpMsgBuf);
 
-  if (success) {
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-  }
-  else {
-    AfxMessageBox(L"Failed to run updsvc-write.exe with administrator privileges.");
+    LocalFree(lpMsgBuf);
   }
 
   CDialogEx::OnOK();
