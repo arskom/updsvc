@@ -53,6 +53,7 @@ void createRegistryEntry(std::wstring keyPath, std::wstring stringvalue, std::ws
 static std::wstring getPathofComponent(Config cfg, wchar_t componentid[256]);
 static int ListProcessModules(Config cfg, DWORD dwPID);
 static bool isexe(std::wstring s);
+static bool isValidGUID(const std::wstring str);
 
 LPSTR WstringToLPSTR(const std::wstring &wstr);
 /**
@@ -215,30 +216,6 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
     // Create an event. The control handler function, SvcCtrlHandler,
     // signals this event when it receives the stop control code.
 
-    Config cfg;
-    cfg.url = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"URL");
-    cfg.product_guid = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"PRODUCT_GUID");
-    cfg.params_full = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"PARAMS_FULL");
-    cfg.params_patch = readDataString(L"SOFTWARE\\Arskom\\updsvc", L"PARAMS_PATCH");
-    cfg.period = ReadDWORDFromRegedit(L"SOFTWARE\\Arskom\\updsvc", L"PERIOD");
-    if (cfg.url.empty()) {
-        SvcReportEvent(L"Service cant start, url is empty or getting url from registry");
-        return;
-    }
-    if (cfg.product_guid.empty()) {
-        SvcReportEvent(L"Service cant start, product guid is empty or getting it from registry");
-        return;
-    }
-    if (cfg.params_full.empty()) {
-        SvcReportEvent(
-                L"Service cant start, full install parameter is empty or getting it from registry");
-        return;
-    }
-    if (cfg.params_patch.empty()) {
-        SvcReportEvent(L"Service cant start, patch install parameter is empty or getting it from "
-                       L"registry");
-        return;
-    }
     ghSvcStopEvent = CreateEvent(NULL, // default security attributes
             TRUE, // manual reset event
             FALSE, // not signaled
@@ -256,7 +233,6 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
     // TO_DO: Perform work until service stops.
 
     while (1) {
-        UpdateifRequires(cfg);
         // Check whether to stop the service.
 
         WaitForSingleObject(ghSvcStopEvent, INFINITE);
@@ -581,7 +557,7 @@ UpdateInfo UpdateDetector(Config cfg, const std::string &strjson) {
         std::string key = it.key();
         // check whether current version is smaller than the version at hand
         if (compareVersions(it.key(), wversion) != 1) {
-            std::cout << "Version " << it.key() << " skipped" << std::endl;
+            // std::cout << "Version " << it.key() << " skipped" << std::endl;
             continue;
         }
 
@@ -591,22 +567,25 @@ UpdateInfo UpdateDetector(Config cfg, const std::string &strjson) {
             std::string sfilename = jt.value()["name"];
             auto wfilename = s2ws(sfilename);
 
-            auto isBanned = isValueExists(L"SOFTWARE\\Arskom\\updsvc\\banned", wfilename);
+            auto isBanned = isValueExists(
+                    L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid + L"\\banned", wfilename);
 
-            if (jt.key() == version && jt.value()["channel"] == "Stable" && ! isBanned) {
+            if (jt.key() == version && jt.value()["channel"] == cfg.rel_chan && ! isBanned) {
                 const auto &url = jt.value()["url"];
                 // SvcReportInfo(L"Patch update from %s to %s", jt.key(), it.key());
-                std::cout << "Patch update from " << jt.key() << " to " << it.key()
-                          << " url: " << url << std::endl;
+                auto patchupdinfo = L"Patch update from " + s2ws(std::string_view(jt.key()))
+                        + L" to " + s2ws(std::string_view(it.key())) + L" url : "
+                        + s2ws(std::string_view(url));
+                SvcReportInfo(patchupdinfo);
                 return {s2ws(std::string_view(url)), true};
             }
         }
 
         if (val["null"]["channel"] == "Stable") {
             const auto &url = val["null"]["url"];
-            //            std::cout << "Full update from " << version << " to " << it.key() << "
-            //            url: " << url
-            //<< std::endl;
+            auto fullupdinfo = L"Full update from " + wversion + L" to "
+                    + s2ws(std::string_view(it.key())) + L" url : " + s2ws(std::string_view(url));
+            SvcReportInfo(fullupdinfo);
             return {s2ws(std::string_view(url)), false};
         }
 
@@ -791,12 +770,11 @@ std::string ws2s(std::wstring_view s) {
 bool matchFileRegex(const std::wstring &input, const std::wregex &pattern) {
     if (std::regex_match(input, pattern)) {
         std::wcout << "Valid file name " << input << std::endl;
-        //
+        SvcReportInfo(L"Downloaded file's name is valid, installation can start");
         return true;
     }
     else {
-        std::wcout << "Invalid file name" << std::endl;
-        //
+        SvcReportEvent(L"Invaild file name");
         return false;
     }
 }
@@ -805,19 +783,16 @@ bool checkandCreateDirectory(std::wstring path) {
     DWORD attributes = GetFileAttributes(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES || ! (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
         if (CreateDirectory(path.data(), NULL)) {
-            std::wcout << "Directory created: " << path << std::endl;
-            //
+            SvcReportInfo(L"Directory created: " + path);
             return true;
         }
         else {
-            std::wcerr << "Failed to create directory: " << path << std::endl;
-            //
+            SvcReportEvent(L"Failed to create directory: " + path);
             return false;
         }
     }
     else {
-        std::wcout << "Directory already exists: " << path << std::endl;
-        //
+        SvcReportInfo(L"Directory already exists: " + path);
         return true;
     }
 }
@@ -858,15 +833,14 @@ std::wstring ReadMSI(Config cfg, const wchar_t *msiPath) {
         UINT res = MsiRecordGetString(hRecord, 1, componentId, &dirparentBufferSize);
 
         if (res != ERROR_SUCCESS) {
-            SvcReportEvent(L"Read MSI");
+            SvcReportEvent(L"MsiRecordGetString(Read MSI) ");
             return L"";
         }
 
         // Get the information from the record
         path = getPathofComponent(cfg, componentId);
-        // std::wcout << path << std::endl;
         if (isexe(path)) {
-            // std::wcout << path << std::endl;
+            SvcReportInfo(L"Path of program(.exe file) found successfully");
             return path;
         }
         dirparentBufferSize = sizeof(componentId) / sizeof(wchar_t);
@@ -875,7 +849,7 @@ std::wstring ReadMSI(Config cfg, const wchar_t *msiPath) {
     MsiCloseHandle(hRecord);
     MsiCloseHandle(hView);
     MsiCloseHandle(hDatabase);
-    //
+    SvcReportEvent(L"Founding path of program(.exe file) ");
     return L"";
 }
 
@@ -1047,7 +1021,7 @@ std::wstring readDataString(std::wstring keyPath, std::wstring regValueName) {
     queryResult = RegQueryValueEx(hKey, regValueName.c_str(), nullptr, nullptr,
             reinterpret_cast<BYTE *>(buffer), &bufferSize);
     if (queryResult != ERROR_SUCCESS) {
-        // std::wcout << L"Failed to query the value data for: " << regValueName << std::endl;
+        SvcReportEvent(L"Query the value data for " + regValueName);
         delete[] buffer; // Clean up allocated memory
         RegCloseKey(hKey);
         return {};
@@ -1059,7 +1033,7 @@ std::wstring readDataString(std::wstring keyPath, std::wstring regValueName) {
     // Clean up allocated memory and close the key handle
     delete[] buffer;
     RegCloseKey(hKey);
-    //
+    SvcReportInfo(L"Reading data of string value ended successfully");
     return valueData;
 }
 
@@ -1081,7 +1055,7 @@ DWORD ReadDWORDFromRegedit(std::wstring keyPath, std::wstring regValueName) {
         SvcReportEvent(L"Registry opening");
         return {};
     }
-    //
+    SvcReportInfo(L"Reading data of DWORD value ended successfully");
     return dwValue;
 }
 
@@ -1107,7 +1081,7 @@ bool isValueExists(std::wstring keyPath, const std::wstring stringvalue) {
         if (result == ERROR_SUCCESS) {
 
             if (_wcsicmp(stringvalue.c_str(), valueName) == 0) {
-                SvcReportInfo(L"isValueExists find value succesfuly");
+                SvcReportInfo(L"This file is banned, scanning is in progress");
                 foundMatch = true;
                 break;
             }
@@ -1124,18 +1098,17 @@ bool isValueExists(std::wstring keyPath, const std::wstring stringvalue) {
     }
 
     RegCloseKey(hKey);
-    //
+    SvcReportInfo(L"Filename not found in banned files, download can start");
     return foundMatch;
 }
 
-// have to control after calling every function
 std::wstring UpdateifRequires(Config cfg) {
 
     std::wstring domain, path;
 
     urlSplit(cfg.url, domain, path);
 
-    std::string json = CreateRequest(0, domain, path); // errorhandling after createrequest
+    std::string json = CreateRequest(0, domain, path);
     auto update_info = UpdateDetector(cfg, json);
     auto &updateurl = update_info.url;
     auto ispatch = update_info.is_patch;
@@ -1165,12 +1138,10 @@ std::wstring UpdateifRequires(Config cfg) {
         SvcReportInfo(L"Program is running cant update");
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
-    // return?
     SvcReportInfo(L"Program is closed update can start");
     std::wstring UpdateFile = s2ws(updatepath);
 
     installExe(cfg, UpdateFile, ispatch);
-    // error handling
     return {};
 }
 
@@ -1226,12 +1197,117 @@ bool installExe(Config cfg, const std::wstring exePath, bool ispatch) {
         std::size_t lastSlashPos = exePath.find_last_of(L'\\');
         std::wstring filename = exePath.substr(lastSlashPos + 1);
         std::this_thread::sleep_for(std::chrono::seconds(10));
-        createRegistryEntry(L"SOFTWARE\\Arskom\\updsvc\\banned", filename, L"1");
-        UpdateifRequires(cfg);
-        //
+        createRegistryEntry(
+                L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid + L"\\banned", filename, L"1");
+        SvcReportInfo(L"Update has failed, file can be corrupted. " + filename + L" banned.");
+        UpdateifRequires(cfg);    
         return false; //??
     }
 
     SvcReportInfo(L"Exe installed successfully");
     return true;
+}
+
+bool isValidGUID(const std::wstring str) {
+    // Regular expression to check for a valid GUID format
+    std::wregex guidPattern(L"^\\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-"
+                            L"9a-fA-F]{12}\\}?$");
+    return std::regex_match(str, guidPattern);
+}
+
+bool UpdateAll(DWORD period) {
+    Config cfg;
+    cfg.url = readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"URL");
+    cfg.params_full =
+            readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"PARAMS_FULL");
+    cfg.params_patch =
+            readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"PARAMS_PATCH");
+    cfg.period = ReadDWORDFromRegedit(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"PERIOD");
+    cfg.rel_chan = readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"REL_CHAN");
+    // this part can be written with a function
+    if (cfg.period == 0) {
+        SvcReportInfo(L"Auto update disabled by user");
+        return false;
+    }
+    if (cfg.url.empty()) {
+        SvcReportEvent(L"Service cant start, url is empty or getting url from registry");
+        return false;
+    }
+    if (cfg.params_full.empty()) {
+        SvcReportEvent(
+                L"Service cant start, full install parameter is empty or getting it from registry");
+        return false;
+    }
+    if (cfg.params_patch.empty()) {
+        SvcReportEvent(L"Service cant start, patch install parameter is empty or getting it from "
+                       L"registry");
+        return false;
+    }
+    /*if (cfg.period.empty()) {
+        SvcReportInfo(L"Auto update disabled by user");
+        return false;
+    }*/
+    // this part can written with a function
+
+    period = cfg.period;
+
+    HKEY hKey;
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Arskom\\updsvc", 0, KEY_READ, &hKey)
+            != ERROR_SUCCESS) {
+        std::cerr << "Failed to open registry key." << std::endl;
+        return false;
+    }
+
+    DWORD subkeyCount;
+    if (RegQueryInfoKey(hKey, nullptr, nullptr, nullptr, &subkeyCount, nullptr, nullptr, nullptr,
+                nullptr, nullptr, nullptr, nullptr)
+            != ERROR_SUCCESS) {
+        std::cerr << "Failed to query subkey count." << std::endl;
+        RegCloseKey(hKey);
+        return false;
+    }
+
+    std::vector<wchar_t> subkeyNameBuffer(256);
+    std::wstring subkeyName;
+
+    if (subkeyCount == 0) {
+        return false;
+    }
+
+    for (DWORD i = 0; i < subkeyCount; ++i) {
+        DWORD bufferLength = static_cast<DWORD>(subkeyNameBuffer.size());
+        if (RegEnumKeyEx(hKey, i, subkeyNameBuffer.data(), &bufferLength, nullptr, nullptr, nullptr,
+                    nullptr)
+                == ERROR_SUCCESS) {
+            subkeyName = subkeyNameBuffer.data();
+            std::wstring subkeyPath = L"SOFTWARE\\Arskom\\updsvc\\" + subkeyName;
+
+            HKEY hSubkey;
+            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, subkeyPath.c_str(), 0, KEY_READ, &hSubkey)
+                    == ERROR_SUCCESS) {
+                // Read the GUID value (assuming it's stored as a string value)
+                wchar_t guidValue[39]; // Max length of a GUID is 36 characters + 2 brackets + null
+                                       // terminator
+                DWORD bufferSize = sizeof(guidValue);
+                /*if (RegQueryValueEx(hSubkey, , nullptr, nullptr,
+                            reinterpret_cast<LPBYTE>(guidValue), &bufferSize) //FIXME
+                        == ERROR_SUCCESS)*/
+                {
+                    std::wstring guidwstr(guidValue);
+
+                    if (isValidGUID(guidwstr)) {
+                        // Call your function to process the valid GUID
+                        UpdateifRequires(cfg);
+                    }
+                    else {
+                        // std::wcout << "Invalid GUID found: " << guidAString << std::endl;
+                    }
+                }
+
+                RegCloseKey(hSubkey);
+            }
+        }
+    }
+
+    RegCloseKey(hKey);
 }

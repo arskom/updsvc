@@ -14,6 +14,7 @@ struct Config {
     std::wstring product_guid;
     std::wstring params_full;
     std::wstring params_patch;
+    std::wstring rel_chan;
     DWORD period;
 };
 
@@ -42,4 +43,5 @@ bool isFilenameBanned(const std::wstring &filename);
 std::wstring UpdateifRequires(Config cfg);
 std::wstring readDataString(std::wstring keyPath, std::wstring valueName);
 DWORD ReadDWORDFromRegedit(std::wstring keyPath, std::wstring regValueName);
+VOID SvcReportEvent(std::wstring szFunction);
 #endif // SVC_H
