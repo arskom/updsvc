@@ -24,7 +24,10 @@ set_target_properties(updsvc-settings PROPERTIES WIN32_EXECUTABLE TRUE)
 #updsvc-write
 add_executable(updsvc-write
     Write.cpp
-    updsvc-write.exe.manifest
+    #updsvc-write.exe.manifest
 )
-set_target_properties(updsvc-write PROPERTIES WIN32_EXECUTABLE TRUE)
+set_target_properties(updsvc-write PROPERTIES
+    WIN32_EXECUTABLE TRUE
+    LINK_FLAGS "/MANIFESTUAC:level='requireAdministrator'"
+)
 
