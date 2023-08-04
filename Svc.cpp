@@ -56,6 +56,7 @@ static bool isexe(std::wstring s);
 static bool isValidGUID(const std::wstring str);
 
 LPSTR WstringToLPSTR(const std::wstring &wstr);
+static void UpdateAll(DWORD period);
 /**
  * @brief Entry point for the process
  * @param argc Number of arguments
@@ -231,9 +232,11 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv) {
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
     // TO_DO: Perform work until service stops.
-
+    DWORD period = 0;
     while (1) {
         // Check whether to stop the service.
+        UpdateAll(period);
+        std::this_thread::sleep_for(std::chrono::seconds(period));
 
         WaitForSingleObject(ghSvcStopEvent, INFINITE);
         ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
@@ -1187,7 +1190,7 @@ bool installExe(Config cfg, const std::wstring exePath, bool ispatch) {
     if (! GetExitCodeProcess(pi.hProcess, &exitCode)) {
         SvcReportEvent((L"GetExitCode of installing exe"));
     }
-
+    SvcReportEvent(exitCode + L"Installing exe");
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
@@ -1209,104 +1212,51 @@ bool installExe(Config cfg, const std::wstring exePath, bool ispatch) {
 }
 
 bool isValidGUID(const std::wstring str) {
-    // Regular expression to check for a valid GUID format
     std::wregex guidPattern(L"^\\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-"
                             L"9a-fA-F]{12}\\}?$");
     return std::regex_match(str, guidPattern);
 }
 
-bool UpdateAll(DWORD period) {
-    Config cfg;
-    cfg.url = readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"URL");
-    cfg.params_full =
-            readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"PARAMS_FULL");
-    cfg.params_patch =
-            readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"PARAMS_PATCH");
-    cfg.period = ReadDWORDFromRegedit(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"PERIOD");
-    cfg.rel_chan = readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid, L"REL_CHAN");
-    // this part can be written with a function
-    if (cfg.period == 0) {
-        SvcReportInfo(L"Auto update disabled by user");
-        return false;
-    }
-    if (cfg.url.empty()) {
-        SvcReportEvent(L"Service cant start, url is empty or getting url from registry");
-        return false;
-    }
-    if (cfg.params_full.empty()) {
-        SvcReportEvent(
-                L"Service cant start, full install parameter is empty or getting it from registry");
-        return false;
-    }
-    if (cfg.params_patch.empty()) {
-        SvcReportEvent(L"Service cant start, patch install parameter is empty or getting it from "
-                       L"registry");
-        return false;
-    }
-    /*if (cfg.period.empty()) {
-        SvcReportInfo(L"Auto update disabled by user");
-        return false;
-    }*/
-    // this part can written with a function
-
-    period = cfg.period;
-
+void UpdateAll(DWORD period) {
     HKEY hKey;
     if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Arskom\\updsvc", 0, KEY_READ, &hKey)
             != ERROR_SUCCESS) {
-        std::cerr << "Failed to open registry key." << std::endl;
-        return false;
+        SvcReportEvent(L"Unable to open registry key: SOFTWARE\\Arskom\\updsvc");
+        ReportSvcStatus(SERVICE_STOPPED, ERROR_INVALID_PARAMETER, 0);
+        return;
     }
 
-    DWORD subkeyCount;
-    if (RegQueryInfoKey(hKey, nullptr, nullptr, nullptr, &subkeyCount, nullptr, nullptr, nullptr,
-                nullptr, nullptr, nullptr, nullptr)
-            != ERROR_SUCCESS) {
-        std::cerr << "Failed to query subkey count." << std::endl;
-        RegCloseKey(hKey);
-        return false;
-    }
+    wchar_t subkeyName[MAX_PATH];
+    DWORD index = 0;
+    while (RegEnumKey(hKey, index, subkeyName, MAX_PATH) == ERROR_SUCCESS) {
+        std::wstring product_guid(subkeyName);
 
-    std::vector<wchar_t> subkeyNameBuffer(256);
-    std::wstring subkeyName;
+        Config cfg;
+        if (isValidGUID(product_guid)) {
+            cfg.product_guid = product_guid;
+            cfg.url = readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + product_guid, L"URL");
+            cfg.params_full =
+                    readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + product_guid, L"PARAMS_FULL");
+            cfg.params_patch =
+                    readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + product_guid, L"PARAMS_PATCH");
+            cfg.period =
+                    ReadDWORDFromRegedit(L"SOFTWARE\\Arskom\\updsvc\\" + product_guid, L"PERIOD");
+            cfg.rel_chan =
+                    readDataString(L"SOFTWARE\\Arskom\\updsvc\\" + product_guid, L"REL_CHAN");
 
-    if (subkeyCount == 0) {
-        return false;
-    }
-
-    for (DWORD i = 0; i < subkeyCount; ++i) {
-        DWORD bufferLength = static_cast<DWORD>(subkeyNameBuffer.size());
-        if (RegEnumKeyEx(hKey, i, subkeyNameBuffer.data(), &bufferLength, nullptr, nullptr, nullptr,
-                    nullptr)
-                == ERROR_SUCCESS) {
-            subkeyName = subkeyNameBuffer.data();
-            std::wstring subkeyPath = L"SOFTWARE\\Arskom\\updsvc\\" + subkeyName;
-
-            HKEY hSubkey;
-            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, subkeyPath.c_str(), 0, KEY_READ, &hSubkey)
-                    == ERROR_SUCCESS) {
-                // Read the GUID value (assuming it's stored as a string value)
-                wchar_t guidValue[39]; // Max length of a GUID is 36 characters + 2 brackets + null
-                                       // terminator
-                DWORD bufferSize = sizeof(guidValue);
-                /*if (RegQueryValueEx(hSubkey, , nullptr, nullptr,
-                            reinterpret_cast<LPBYTE>(guidValue), &bufferSize) //FIXME
-                        == ERROR_SUCCESS)*/
-                {
-                    std::wstring guidwstr(guidValue);
-
-                    if (isValidGUID(guidwstr)) {
-                        // Call your function to process the valid GUID
-                        UpdateifRequires(cfg);
-                    }
-                    else {
-                        // std::wcout << "Invalid GUID found: " << guidAString << std::endl;
-                    }
-                }
-
-                RegCloseKey(hSubkey);
+            if (cfg.period == 0) {
+                SvcReportInfo(L"Auto update disabled by user for product GUID: " + product_guid);
+            }
+            else if (cfg.url.empty() || cfg.params_full.empty() || cfg.params_patch.empty()) {
+                SvcReportEvent(
+                        L"Service can't start, required parameters are missing for product GUID: "
+                        + product_guid);
+            }
+            else {
+                UpdateifRequires(cfg);
             }
         }
+        index++;
     }
 
     RegCloseKey(hKey);
