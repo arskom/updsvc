@@ -56,7 +56,6 @@ static bool isexe(std::wstring s);
 static bool isValidGUID(const std::wstring str);
 
 LPSTR WstringToLPSTR(const std::wstring &wstr);
-static void UpdateAll(DWORD period);
 /**
  * @brief Entry point for the process
  * @param argc Number of arguments
@@ -573,22 +572,24 @@ UpdateInfo UpdateDetector(Config cfg, const std::string &strjson) {
             auto isBanned = isValueExists(
                     L"SOFTWARE\\Arskom\\updsvc\\" + cfg.product_guid + L"\\banned", wfilename);
 
-            if (jt.key() == version && jt.value()["channel"] == cfg.rel_chan && ! isBanned) {
+            if (jt.key() == version && jt.value()["channel"] == ws2s(cfg.rel_chan) && ! isBanned) {
                 const auto &url = jt.value()["url"];
                 // SvcReportInfo(L"Patch update from %s to %s", jt.key(), it.key());
                 auto patchupdinfo = L"Patch update from " + s2ws(std::string_view(jt.key()))
                         + L" to " + s2ws(std::string_view(it.key())) + L" url : "
                         + s2ws(std::string_view(url));
                 SvcReportInfo(patchupdinfo);
+                std::wcout << patchupdinfo << std::endl;
                 return {s2ws(std::string_view(url)), true};
             }
         }
 
-        if (val["null"]["channel"] == "Stable") {
+        if (val["null"]["channel"] == ws2s(cfg.rel_chan)) {
             const auto &url = val["null"]["url"];
             auto fullupdinfo = L"Full update from " + wversion + L" to "
                     + s2ws(std::string_view(it.key())) + L" url : " + s2ws(std::string_view(url));
             SvcReportInfo(fullupdinfo);
+            std::wcout << fullupdinfo << std::endl;
             return {s2ws(std::string_view(url)), false};
         }
 
@@ -1105,7 +1106,7 @@ bool isValueExists(std::wstring keyPath, const std::wstring stringvalue) {
     return foundMatch;
 }
 
-std::wstring UpdateifRequires(Config cfg) {
+bool UpdateifRequires(Config cfg) {
 
     std::wstring domain, path;
 
@@ -1118,7 +1119,7 @@ std::wstring UpdateifRequires(Config cfg) {
 
     if (updateurl.empty()) {
         SvcReportInfo(L"Update not required");
-        return {};
+        return false;
     }
 
     std::wstring domain1, path1;
@@ -1127,13 +1128,13 @@ std::wstring UpdateifRequires(Config cfg) {
 
     if (updatepath.empty()) {
         SvcReportEvent((L"Getting update file"));
-        return {};
+        return false;
     }
 
     auto t = isRunning(cfg);
     if (t == -1) {
         SvcReportEvent((L"Getting process list"));
-        return {};
+        return false;
     }
 
     while (t == 1) {
@@ -1144,8 +1145,12 @@ std::wstring UpdateifRequires(Config cfg) {
     SvcReportInfo(L"Program is closed update can start");
     std::wstring UpdateFile = s2ws(updatepath);
 
-    installExe(cfg, UpdateFile, ispatch);
-    return {};
+    auto a = installExe(cfg, UpdateFile, ispatch);
+    if (! a) {
+        SvcReportEvent(L"Installing exe");
+        return false;
+    }
+    return true;
 }
 
 bool installExe(Config cfg, const std::wstring exePath, bool ispatch) {
