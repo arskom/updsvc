@@ -69,6 +69,7 @@ BOOL CApp::InitInstance()
 	CSettingsDlg dlg;
 	m_pMainWnd = &dlg;
 	INT_PTR nResponse = dlg.DoModal();
+        m_pMainWnd = NULL;
 	if (nResponse == IDOK)
 	{
 		// TODO: Place code here to handle when the dialog is
