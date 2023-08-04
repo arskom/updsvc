@@ -13,9 +13,14 @@
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
+#include <vector>
+#include <regex>
+
 CString ReadRegistryStringValue(const CString &valueName);
 DWORD ReadRegistryDWORDValue(const CString &valueName);
 CString GetPathOfWrite();
+bool isValidGUID(const CString &str);
+std::vector<CString> SetandGetuids(bool uid);
 
 CSettingsDlg::CSettingsDlg(CWnd *pParent /*=nullptr*/)
     : CDialogEx(IDD_SETTINGS_DIALOG, pParent) {
@@ -26,6 +31,7 @@ void CSettingsDlg::DoDataExchange(CDataExchange *pDX) {
   CDialogEx::DoDataExchange(pDX);
   DDX_Control(pDX, IDC_COMBO_RELCHAN, selected_relchan);
   DDX_Control(pDX, IDC_COMBO_PERIOD, selected_period);
+  DDX_Control(pDX, IDC_COMBO1, combo_pname);
 }
 
 BEGIN_MESSAGE_MAP(CSettingsDlg, CDialogEx)
@@ -34,6 +40,8 @@ ON_WM_QUERYDRAGICON()
 ON_BN_CLICKED(IDOK, &CSettingsDlg::OnBnClickedOk)
 ON_CBN_SELCHANGE(IDC_COMBO_PERIOD, &CSettingsDlg::OnCbnSelchangeComboPeriod)
 ON_CBN_SELCHANGE(IDC_COMBO_RELCHAN, &CSettingsDlg::OnCbnSelchangeComboRelchan)
+//ON_EN_CHANGE(IDC_EDIT1, &CSettingsDlg::OnEnChangeEdit1)
+ON_CBN_SELCHANGE(IDC_COMBO1, &CSettingsDlg::OnCbnSelchangeCombo1)
 END_MESSAGE_MAP()
 
 // CSettingsDlg message handlers
@@ -50,10 +58,14 @@ BOOL CSettingsDlg::OnInitDialog() {
           GetWindowLong(this->m_hWnd, GWL_STYLE) | WS_SYSMENU);
   CWnd *pWnd = GetDlgItem(IDOK);
   pWnd->SendMessage(BCM_SETSHIELD, 0, TRUE);
-
-  // TODO: Add extra initialization here
-  DWORD periodvalueFromRegistry =
-          ReadRegistryDWORDValue(L"PERIOD");
+  //Getting all guids and add name of product to combo box
+  std::vector<CString> productnames = SetandGetuids(false);
+  for (const CString &productName : productnames) {
+      combo_pname.AddString(productName);
+  }
+  combo_pname.SetCurSel(0);
+  //Getting value of combo boxes and setting for starting
+  DWORD periodvalueFromRegistry =ReadRegistryDWORDValue(L"PERIOD");
   CString periodcbox;
   if (periodvalueFromRegistry == 3600) {
       periodcbox = L"Every Hour" ;
@@ -71,7 +83,6 @@ BOOL CSettingsDlg::OnInitDialog() {
   int index1 = selected_period.SelectString(-1, periodcbox);
   if (index1 == CB_ERR) {
       // The value from the registry was not found in the ComboBox1
-      // Handle the situation accordingly
       return FALSE;
   }
   
@@ -83,7 +94,6 @@ BOOL CSettingsDlg::OnInitDialog() {
   int index2 = selected_relchan.SelectString(-1, channelvalueFromRegistry);
   if (index2 == CB_ERR) {
       // The value from the registry was not found in the ComboBox1
-      // Handle the situation accordingly
       return FALSE;
   }
   
@@ -132,6 +142,9 @@ void CSettingsDlg::OnBnClickedOk() {
     AfxMessageBox(L"Path of executable is empty.");
     return;
   }
+  std::vector<CString> uids = SetandGetuids(true);
+  int selectedproduct = combo_pname.GetCurSel();
+  CString guid = uids[selectedproduct];
 
   int selectedperiod = selected_period.GetCurSel();
   CString periodstr,paramperiod;
@@ -160,7 +173,7 @@ void CSettingsDlg::OnBnClickedOk() {
     selected_relchan.GetLBText(selectedchannel, relchanstr);
   }
 
-  CString param = _T(" ") + paramperiod + _T(" ") + relchanstr;
+  CString param = _T(" ")+guid +  _T(" ")  + paramperiod + _T(" ") + relchanstr;
 
   HINSTANCE result = ShellExecute(NULL, _T("runas"), newExePath, param, NULL, SW_SHOWNORMAL);
 
@@ -243,4 +256,63 @@ CString GetPathOfWrite() {
   CString newExePath;
   newExePath.Format(_T("%s\\updsvc-write.exe"), exePath);
   return newExePath;
+}
+
+void CSettingsDlg::OnEnChangeEdit1() {
+  // TODO:  If this is a RICHEDIT control, the control will not
+  // send this notification unless you override the CDialogEx::OnInitDialog()
+  // function and call CRichEditCtrl().SetEventMask()
+  // with the ENM_CHANGE flag ORed into the mask.
+
+  // TODO:  Add your control notification handler code here
+}
+
+void CSettingsDlg::OnCbnSelchangeCombo1() {
+
+}
+
+std::vector<CString> SetandGetuids(bool uid) {
+  HKEY hKey;  
+  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Arskom\\updsvc", 0, KEY_READ, &hKey)
+          != ERROR_SUCCESS) {
+   // SvcReportEvent(L"Unable to open registry key: SOFTWARE\\Arskom\\updsvc");
+    return {};
+  }
+  std::vector<CString> str;
+  wchar_t guid[MAX_PATH];
+  DWORD index = 0;
+  while (RegEnumKey(hKey, index, guid, MAX_PATH) == ERROR_SUCCESS) {
+    CString product_guid(guid);
+
+    if (isValidGUID(product_guid)) {
+        if (uid) {
+            str.push_back(product_guid);
+        }
+        else {
+            HKEY hSubKey;
+            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                        L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + product_guid,
+                        0, KEY_READ, &hSubKey)
+                    == ERROR_SUCCESS) {
+                wchar_t displayName[MAX_PATH];
+                DWORD displayNameSize = sizeof(displayName);
+                if (RegQueryValueEx(hSubKey, L"DisplayName", NULL, NULL,
+                            reinterpret_cast<LPBYTE>(displayName), &displayNameSize)
+                        == ERROR_SUCCESS) {
+                    str.push_back(displayName);
+                    RegCloseKey(hSubKey);
+                }
+            }
+        }
+    }
+    index++;
+  }
+  RegCloseKey(hKey);
+  return str;
+}
+
+bool isValidGUID(const CString &str) {
+  const std::wregex uidPattern(L"(\\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\\})");
+
+  return std::regex_match(str.GetString(), uidPattern);
 }

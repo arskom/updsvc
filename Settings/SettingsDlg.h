@@ -35,4 +35,7 @@ protected:
         afx_msg void OnCbnSelchangeComboRelchan();
         CComboBox selected_relchan;
         CComboBox selected_period;
+        afx_msg void OnEnChangeEdit1();
+        afx_msg void OnCbnSelchangeCombo1();
+        CComboBox combo_pname;
 };

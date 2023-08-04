@@ -12,10 +12,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
     int argc = 0;
     LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 
+    std::wstring guid = argv[1];
+
     std::wstringstream converter(argv[2]);
     DWORD dwordValue;
     converter >> dwordValue;
-    std::wstring guid = argv[1];
+
     WriteRegistryDWORD(L"SOFTWARE\\Arskom\\updsvc\\" + guid, L"PERIOD", dwordValue);
     WriteRegistryString(L"SOFTWARE\\Arskom\\updsvc\\" + guid, L"REL_CHAN", argv[3]);
 

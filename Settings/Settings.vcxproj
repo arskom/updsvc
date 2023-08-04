@@ -207,6 +207,7 @@
     <ResourceCompile Include="Settings.rc" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="cpp.hint" />
     <None Include="res\Settings.rc2" />
   </ItemGroup>
   <ItemGroup>
