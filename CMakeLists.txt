@@ -30,5 +30,11 @@ add_executable(updsvc_test     Svc.cpp Svc.h SvcTest.cpp)
 target_link_libraries(updsvc_test PRIVATE Winhttp advapi32 msi)
 target_compile_definitions(updsvc_test PRIVATE SVC_TEST)
 
+# settings
+add_subdirectory(Settings)
+
+# updsvc-ctl
 add_executable(updsvc-ctl UpdSvc.res SvcControl.cpp)
+
+# updsvc-cfg
 add_executable(updsvc-cfg UpdSvc.res SvcConfig.cpp)

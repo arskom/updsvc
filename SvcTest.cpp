@@ -5,6 +5,7 @@
 #include <shellapi.h>
 
 int main(int argc, char *argv[]) {
-
+    DWORD period = 0;
+    UpdateAll(period);
     return 0;
 }
