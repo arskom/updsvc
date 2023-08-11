@@ -22,11 +22,11 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_compile_definitions(UNICODE _UNICODE)
 
 # updsvc
-add_executable(updsvc     UpdSvc.res Svc.cpp)
+add_executable(updsvc UpdSvc.res Svc.cpp Svc.h)
 target_link_libraries(updsvc PRIVATE Winhttp advapi32 msi)
 
 # updsvc_test
-add_executable(updsvc_test     Svc.cpp Svc.h SvcTest.cpp)
+add_executable(updsvc_test UpdSvc.res Svc.cpp Svc.h SvcTest.cpp)
 target_link_libraries(updsvc_test PRIVATE Winhttp advapi32 msi)
 target_compile_definitions(updsvc_test PRIVATE SVC_TEST)
 
